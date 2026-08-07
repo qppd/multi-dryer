@@ -42,9 +42,24 @@ multi-dryer/
 │       ├── ui_optimistic_state.*      # instant UI feedback, corrected by 1 Hz status
 │       └── esp_panel_board_custom_conf.h  # Waveshare Touch-LCD-7 board config (verify!)
 └── docs/
+    ├── README.md                      # documentation index & roadmap
+    ├── api/espnow-protocol.md         # ESP-NOW protocol/API reference
+    ├── stacks/tech-stack.md           # hardware + firmware + library stack
+    ├── guides/bring-up-checklist.md   # ordered boot/hardware verification
+    ├── schematic/hardware-wiring.md   # written pin-by-pin wiring plan
     ├── schematic/wiring-diagram.md    # interactive wiring diagram link (Cirkit Designer)
     └── diagrams/                      # (future) diagrams
 ```
+
+## Documentation
+
+- [docs/README.md](docs/README.md) — index & required-docs roadmap
+- [ESP-NOW protocol / API](docs/api/espnow-protocol.md) — packets, commands, states, pairing
+- [Technology stack](docs/stacks/tech-stack.md) — hardware, firmware, libraries, tools
+- [Wiring diagram](docs/schematic/wiring-diagram.md) — interactive Cirkit Designer schematic
+- [Hardware wiring plan](docs/schematic/hardware-wiring.md) — written pin-by-pin reference
+- [Bring-up checklist](docs/guides/bring-up-checklist.md) — ordered boot/hardware verification
+- [Calibration guide](docs/guides/calibration-guide.md) — TARE + CALIBRATE:<kg> procedure, NVS persistence
 
 ## Hardware
 
@@ -69,7 +84,7 @@ multi-dryer/
 | HX711 DOUT / SCK | 35 / 32 |
 | SHT31 SDA / SCL | 21 / 22 |
 
-Full wiring plan: [`docs/schematic/wiring-diagram.md`](docs/schematic/wiring-diagram.md) and the interactive [Cirkit Designer schematic](https://app.cirkitdesigner.com/project/9d03db5a-37c8-4f46-ac3f-7d5821ce26ce).
+Full wiring plan: [`docs/schematic/hardware-wiring.md`](docs/schematic/hardware-wiring.md) and the interactive [Cirkit Designer schematic](https://app.cirkitdesigner.com/project/9d03db5a-37c8-4f46-ac3f-7d5821ce26ce).
 
 ## Getting Started
 

@@ -8,5 +8,5 @@ Interactive schematic (Cirkit Designer):
 
 ## Related
 
-- Written pin-by-pin wiring plan: `references/plans/hardware-wiring.md` (local, git-ignored)
+- Written pin-by-pin wiring plan: [`hardware-wiring.md`](hardware-wiring.md)
 - Pin definitions: `src/MultiDryerController/PINS_CONFIG.h`
