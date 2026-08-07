@@ -8,6 +8,7 @@
 #include "SHT31_CONFIG.h"
 #include "LOADCELL_CONFIG.h"
 #include "PID_CONFIG.h"
+#include "DRYER_STATE.h"
 #include "espnow_protocol.h"
 #include "espnow_link.h"
 
@@ -23,18 +24,38 @@ double PID_OUTPUT           = 0.0;
 
 unsigned long _lastStatusPrint = 0;
 
+const char* stateName(uint8_t s) {
+  switch (s) {
+    case DSTATE_IDLE:     return "IDLE";
+    case DSTATE_DRYING:   return "DRYING";
+    case DSTATE_PAUSED:   return "PAUSED";
+    case DSTATE_COMPLETE: return "COMPLETE";
+    default:              return "?";
+  }
+}
+
 // ── SSR driver (declared extern in PID_CONFIG.h) ─────────────────────────────
 // SSR1 = PTC heater, SSR2 = exhaust outlet, SSR3 = inlet fan, SSR4 = exhaust fan
+//
+// ssrStateFlags mirrors the REAL output state (used by the ESP-NOW status
+// packet so the HMI always shows what is actually energized — PID-driven or
+// manual override). Bit layout matches FLAG_HEATER / FLAG_FAN / FLAG_EXHAUST
+// from espnow_protocol.h.
+uint8_t ssrStateFlags = 0;
+
 void operateSSR(int relayIndex, bool state) {
     int pin;
+    uint8_t flag;
     switch (relayIndex) {
-        case 1: pin = SSR1_PIN; break;
-        case 2: pin = SSR2_PIN; break;
-        case 3: pin = SSR3_PIN; break;
-        case 4: pin = SSR4_PIN; break;
+        case 1: pin = SSR1_PIN; flag = FLAG_HEATER; break;
+        case 2: pin = SSR2_PIN; flag = FLAG_EXHAUST; break;
+        case 3: pin = SSR3_PIN; flag = FLAG_FAN; break;
+        case 4: pin = SSR4_PIN; flag = FLAG_EXHAUST; break;
         default: return;
     }
     digitalWrite(pin, state ? HIGH : LOW);
+    if (state) ssrStateFlags |= flag;
+    else       ssrStateFlags &= (uint8_t)~flag;
 }
 
 void setup() {
@@ -52,6 +73,7 @@ void setup() {
   initLoadCell();   // HX711 weight sensor (DOUT=35, SCK=32)
   initSHT31();      // temperature/humidity (I2C 21/22)
   initPID();        // PTC heater temperature control (starts in MANUAL = off)
+  initDrying();     // drying state machine (IDLE)
   initEspNow();     // wireless link to the HMI board
 }
 
@@ -62,6 +84,9 @@ void loop() {
   // PID: compute + drive SSRs (PID_v1 throttles itself to its 1 s sample time)
   pidCOMPUTE();
 
+  // Drying state machine: 1 Hz tick (weight cache, water loss, auto-complete)
+  updateDrying();
+
   // ESP-NOW: process HMI commands + send periodic status packets (1 Hz)
   espnowUpdate();
 
@@ -69,14 +94,15 @@ void loop() {
   unsigned long now = millis();
   if (now - _lastStatusPrint >= 5000) {
     _lastStatusPrint = now;
-    Serial.printf("[STATUS] temp=%.2f C  hum=%.1f %%  weight=%.3f kg  "
-                  "setpoint=%.1f C  pid=%.0f  sht31=%s  hmi=%s\n",
+    Serial.printf("[STATUS] %-8s temp=%.2f C  hum=%.1f %%  weight=%.3f kg  "
+                  "loss=%.1f%%  setpoint=%.1f C  pid=%.0f  hmi=%s\n",
+                  stateName(getDryerState()),
                   (float)CURRENT_TEMPERATURE,
                   CURRENT_HUMIDITY,
-                  readLoadCell(),
+                  getWeightKg(),
+                  getWaterLoss(),
                   TEMPERATURE_SETPOINT,
                   PID_OUTPUT,
-                  sht31OK ? "OK" : "NO SENSOR",
                   hmiReachable ? "reachable" : "not seen");
   }
 }

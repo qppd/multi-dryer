@@ -23,6 +23,7 @@
 #include "SHT31_CONFIG.h"
 #include "LOADCELL_CONFIG.h"
 #include "PID_CONFIG.h"
+#include "DRYER_STATE.h"
 
 // ── HMI peer MAC — UPDATE with the MAC printed by the HMI on boot ─────────────
 static uint8_t HMI_PEER_MAC[6] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
@@ -32,6 +33,10 @@ static uint8_t HMI_PEER_MAC[6] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
 // and read from loop() — hence volatile.
 static volatile bool hmiReachable   = false;   // last ESP-NOW send was ACKed by the HMI
 static unsigned long lastStatusSent = 0;
+
+// Real SSR output state, maintained by operateSSR() (defined in the .ino).
+// Bits match FLAG_HEATER / FLAG_FAN / FLAG_EXHAUST.
+extern uint8_t ssrStateFlags;
 
 #define STATUS_SEND_INTERVAL_MS  1000   // status packet cadence (1 Hz)
 
@@ -68,24 +73,24 @@ static void sendStatusNow() {
     EspNowStatusPacket pkt;
     memset(&pkt, 0, sizeof(pkt));
     pkt.packetType  = ESPNOW_PKT_STATUS;
-    pkt.state       = DSTATE_IDLE;                       // state machine: not implemented yet
+    pkt.state       = getDryerState();                   // DSTATE_* from the state machine
 
-    // Flags reflect live outputs so the HMI dashboard shows real state
+    // Flags reflect the REAL SSR state (PID-driven or manual override) so the
+    // HMI dashboard always shows what is actually energized
     uint8_t flags = sht31OK ? FLAG_SHT31 : 0;
-    if (pid.GetMode() == AUTOMATIC) {
-        flags |= FLAG_PID;
-        if (PID_OUTPUT > 0) flags |= FLAG_HEATER | FLAG_FAN;   // heating: PTC + inlet fan
-        else                flags |= FLAG_EXHAUST;              // venting
-    }
-    pkt.flags       = flags;
-    pkt.temperature = getTemperature();                  // °C
-    pkt.humidity    = getHumidity();                     // %
-    pkt.weight      = readLoadCell();                    // kg
-    pkt.setpoint    = (float)TEMPERATURE_SETPOINT;       // target °C
-    pkt.pidOutput   = (float)PID_OUTPUT;
-    // waterLoss / waterLossTarget / runtimeSeconds / estimatedEDT: 0 until
-    // the drying state machine is implemented
-    pkt.checksum    = espnowStatusChecksum(&pkt);
+    if (pid.GetMode() == AUTOMATIC) flags |= FLAG_PID;
+    flags |= (ssrStateFlags & (FLAG_HEATER | FLAG_FAN | FLAG_EXHAUST));
+    pkt.flags           = flags;
+    pkt.temperature     = getTemperature();              // °C
+    pkt.humidity        = getHumidity();                 // %
+    pkt.weight          = getWeightKg();                 // kg (1 Hz cache from state machine)
+    pkt.waterLoss       = getWaterLoss();                // %
+    pkt.setpoint        = (float)TEMPERATURE_SETPOINT;   // target °C
+    pkt.waterLossTarget = getWaterLossTarget();          // %
+    pkt.pidOutput       = (float)PID_OUTPUT;
+    pkt.runtimeSeconds  = (uint16_t)min((uint32_t)65535, getRuntimeSeconds()); // uint16 field (wraps ~18 h)
+    pkt.estimatedEDT    = getEstimatedEDT();             // seconds, 0 = unknown
+    pkt.checksum        = espnowStatusChecksum(&pkt);
     esp_now_send(HMI_PEER_MAC, (const uint8_t*)&pkt, sizeof(pkt));
 }
 
@@ -96,7 +101,7 @@ void initEspNow() {
     WiFi.disconnect();
 
     // Print own MAC so user can copy it into the HMI's NODEMCU_PEER_MAC
-    Serial.printf("[ESP-NOW] Controller MAC (copy to HMI NODEMCU_PEER_MAC): %s\n",
+    Serial.printf("[ESP-NOW] Controller MAC (copy to HMI CONTROLLER_PEER_MAC): %s\n",
                   WiFi.macAddress().c_str());
 
     if (esp_now_init() != ESP_OK) {
@@ -154,33 +159,59 @@ static void handleCmd(uint8_t cmdType, float value) {
             calibrateLoadCell(value);
             break;
 
-        // PID temperature control
+        // Drying session control (state machine)
+        case CMD_START_DRYING:
+        case CMD_PID_START:               // alias (FishDryer baseline)
+            startDrying();
+            break;
+        case CMD_STOP_DRYING:
+        case CMD_PID_STOP:
+            stopDrying();
+            break;
+        case CMD_PAUSE_DRYING:
+            pauseDrying();
+            break;
+        case CMD_RESUME_DRYING:
+            resumeDrying();
+            break;
+
+        // Process parameters
         case CMD_SET_TEMPERATURE:
             setPIDSetpoint(value);
             break;
-        case CMD_PID_START:
-        case CMD_START_DRYING:            // temporary alias until the state machine
-            startPID();
-            break;
-        case CMD_PID_STOP:
-        case CMD_STOP_DRYING:
-            stopPID();
+        case CMD_SET_WATER_LOSS:
+            setWaterLossTarget(value);
             break;
 
-        // Manual heater override (HMI manual-operation screen)
+        // Manual overrides (HMI manual-operation screen) — any manual command
+        // ends the current drying session first, so PID/state machine and
+        // manual control can never fight.
         case CMD_HEATER_ON:
-            stopPID();
+            stopDrying();
             operateSSR(1, true);          // PTC heater ON
             operateSSR(3, true);          // inlet fan ON (airflow with heat!)
             break;
         case CMD_HEATER_OFF:
-            stopPID();
+            stopDrying();
+            break;
+        case CMD_FAN_ON:
+            stopDrying();
+            operateSSR(3, true);          // inlet fan ON
+            break;
+        case CMD_FAN_OFF:
+            stopDrying();
+            break;
+        case CMD_EXHAUST_ON:
+            stopDrying();
+            operateSSR(2, true);          // exhaust outlet OPEN
+            operateSSR(4, true);          // exhaust fan ON
+            break;
+        case CMD_EXHAUST_OFF:
+            stopDrying();
             break;
 
-        // PAUSE / RESUME / FAN / EXHAUST / WATER_LOSS: pending the drying
-        // state machine
         default:
-            Serial.printf("[ESP-NOW] CMD 0x%02X received (not implemented yet)\n", cmdType);
+            Serial.printf("[ESP-NOW] CMD 0x%02X received (unknown)\n", cmdType);
             break;
     }
 }

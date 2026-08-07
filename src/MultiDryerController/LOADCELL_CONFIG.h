@@ -98,11 +98,16 @@ void calibrateLoadCell(float known_kg) {
 }
 
 // Returns weight in KG. Returns 0 if sensor not ready.
+// (Read at 1 Hz by the state machine — the "not ready" warning prints only on
+// the ready→not-ready transition to avoid serial spam.)
 float readLoadCell() {
+    static bool lastReady = true;
     if (!scale.is_ready()) {
-        Serial.println(F("HX711 not ready!"));
+        if (lastReady) Serial.println(F("HX711 not ready!"));
+        lastReady = false;
         return 0.0f;
     }
+    lastReady = true;
     float kg = scale.get_units(LOADCELL_SAMPLES);
     if (kg < 0) kg = 0.0f;   // clamp negative noise
     return kg;
