@@ -17,11 +17,26 @@
 #ifndef DRYER_STATE_H
 #define DRYER_STATE_H
 
+#include <Preferences.h>
 #include "espnow_protocol.h"
 #include "LOADCELL_CONFIG.h"
 #include "PID_CONFIG.h"
 
 #define DRYER_TICK_MS  1000
+
+// ── Session persistence (NVS) ────────────────────────────────────────────────
+// Lets a drying session survive a controller reboot / watchdog reset:
+//   - initial weight AND the HX711 raw offset (the zero reference) are saved,
+//     so weight/water-loss keep meaning even after a full power cycle, where
+//     the HX711 offset drifts. On restore the offset is re-applied (no re-tare).
+//   - elapsed runtime, water-loss target and temperature setpoint are restored.
+//   - An active session (DRYING/PAUSED) resumes automatically on boot;
+//     DRYING re-enables the PID. TARE/CALIBRATE are blocked while a session is
+//     active (see espnow_link.h) so the HMI's boot-time TARE cannot destroy the
+//     restored zero reference.
+#define DRYER_PREFS_NS          "drying"
+#define DRYER_PREFS_MAGIC       0xD1
+#define DRYER_SAVE_INTERVAL_MS  30000   // periodic save cadence while drying
 
 // ── Tracking state (single writer: updateDrying(), loop context) ─────────────
 static uint8_t       _state           = DSTATE_IDLE;
@@ -31,6 +46,7 @@ static float         _weightKg        = 0.0f;   // cached, refreshed at 1 Hz
 static float         _initialWeightKg = 0.0f;
 static unsigned long _runMs           = 0;      // drying time, pauses excluded
 static unsigned long _lastTickMs      = 0;
+static unsigned long _lastSaveMs      = 0;      // periodic session-save throttle
 static uint32_t      _runtimeSeconds  = 0;
 static uint32_t      _estimatedEDT    = 0;      // seconds; 0 = unknown
 
@@ -41,6 +57,11 @@ float    getWaterLossTarget() { return _waterLossTarget; }
 float    getWeightKg()        { return _weightKg; }
 uint32_t getRuntimeSeconds()  { return _runtimeSeconds; }
 uint32_t getEstimatedEDT()    { return _estimatedEDT; }
+
+// Forward declarations — persistence functions are defined at the bottom
+static void saveDryingSession(uint8_t state);
+static void clearDryingSession();
+static void restoreDryingSession();
 
 // ── Control ───────────────────────────────────────────────────────────────────
 void setWaterLossTarget(float pct) {
@@ -54,6 +75,8 @@ void initDrying() {
     _weightKg = 0.0f; _initialWeightKg = 0.0f;
     _runMs = 0; _runtimeSeconds = 0; _estimatedEDT = 0;
     _lastTickMs = millis();
+    _lastSaveMs = millis();
+    restoreDryingSession();   // auto-resume an interrupted session, if any
 }
 
 // Fresh session: capture initial weight, start PID, begin tracking
@@ -69,11 +92,13 @@ void startDrying() {
     _weightKg        = _initialWeightKg;
     _runMs = 0; _runtimeSeconds = 0; _estimatedEDT = 0; _waterLossPct = 0;
     _lastTickMs = millis();
+    _lastSaveMs = millis();
     _state = DSTATE_DRYING;
     if (TEMPERATURE_SETPOINT <= 0.0) {
         Serial.println(F("[DRYER] WARNING: no setpoint set — send SET_TEMPERATURE"));
     }
     startPID();
+    saveDryingSession(DSTATE_DRYING);
     Serial.printf("[DRYER] started. Initial weight %.3f kg\n", _initialWeightKg);
 }
 
@@ -82,6 +107,7 @@ void stopDrying() {
     _state = DSTATE_IDLE;
     _runMs = 0; _runtimeSeconds = 0; _estimatedEDT = 0;
     _waterLossPct = 0; _initialWeightKg = 0;
+    clearDryingSession();   // session over — nothing to resume later
     Serial.println(F("[DRYER] stopped"));
 }
 
@@ -89,14 +115,16 @@ void pauseDrying() {
     if (_state != DSTATE_DRYING) return;
     stopPID();   // all SSRs off
     _state = DSTATE_PAUSED;
-    Serial.println(F("[DRYER] paused"));
+    saveDryingSession(DSTATE_PAUSED);
+    Serial.println(F("[DRYER] paused (session saved)"));
 }
 
 void resumeDrying() {
     if (_state != DSTATE_PAUSED) return;
     _state = DSTATE_DRYING;
     startPID();
-    Serial.println(F("[DRYER] resumed"));
+    saveDryingSession(DSTATE_DRYING);
+    Serial.println(F("[DRYER] resumed (session saved)"));
 }
 
 // ── 1 Hz tick (call every loop(); throttled internally) ──────────────────────
@@ -141,6 +169,68 @@ void updateDrying() {
         _estimatedEDT = 0;   // no longer meaningful once complete
         stopPID();
         _state = DSTATE_COMPLETE;
+        clearDryingSession();   // finished — nothing to resume later
+    }
+
+    // Periodic save while drying, so a mid-session reboot loses at most
+    // DRYER_SAVE_INTERVAL_MS of elapsed runtime. Guarded on DRYING so the
+    // auto-complete tick can never re-save a finished session as active.
+    if (_state == DSTATE_DRYING && now - _lastSaveMs >= DRYER_SAVE_INTERVAL_MS) {
+        _lastSaveMs = now;
+        saveDryingSession(DSTATE_DRYING);
+    }
+}
+
+// ── NVS session persistence ──────────────────────────────────────────────────
+static void saveDryingSession(uint8_t state) {
+    Preferences prefs;
+    prefs.begin(DRYER_PREFS_NS, false);
+    prefs.putUChar("magic", DRYER_PREFS_MAGIC);
+    prefs.putUChar("state", state);
+    prefs.putFloat("initW", _initialWeightKg);
+    prefs.putULong("runMs", _runMs);
+    prefs.putFloat("wlTgt", _waterLossTarget);
+    prefs.putFloat("setpt", (float)TEMPERATURE_SETPOINT);
+    prefs.putLong("hxoff", (int64_t)scale.get_offset());   // zero reference
+    prefs.end();
+}
+
+static void clearDryingSession() {
+    Preferences prefs;
+    prefs.begin(DRYER_PREFS_NS, false);
+    prefs.putUChar("state", DSTATE_IDLE);   // IDLE = no active session
+    prefs.end();
+}
+
+// Called from initDrying() — restores an interrupted session, if any.
+static void restoreDryingSession() {
+    Preferences prefs;
+    prefs.begin(DRYER_PREFS_NS, true);
+    if (prefs.getUChar("magic", 0) != DRYER_PREFS_MAGIC) { prefs.end(); return; }
+    uint8_t savedState = prefs.getUChar("state", DSTATE_IDLE);
+    if (savedState == DSTATE_IDLE) { prefs.end(); return; }
+
+    TEMPERATURE_SETPOINT = (double)prefs.getFloat("setpt", 0.0f);
+    _waterLossTarget     = prefs.getFloat("wlTgt", 0.0f);
+    _initialWeightKg     = prefs.getFloat("initW", 0.0f);
+    _runMs               = prefs.getULong("runMs", 0);
+    _runtimeSeconds      = _runMs / 1000UL;
+    scale.set_offset((long)prefs.getLong("hxoff", 0));   // re-apply zero reference
+    prefs.end();
+
+    _state = (savedState == DSTATE_PAUSED) ? DSTATE_PAUSED : DSTATE_DRYING;
+    _lastTickMs = millis();
+    _lastSaveMs = millis();
+    _weightKg   = readLoadCell();   // fresh read with the restored offset
+
+    Serial.printf("[DRYER] RESUMED session (%s) — initW %.3f kg, elapsed %lus, "
+                  "setpoint %.1f C, wlTgt %.1f %%\n",
+                  _state == DSTATE_PAUSED ? "PAUSED" : "DRYING",
+                  _initialWeightKg, (unsigned long)_runtimeSeconds,
+                  TEMPERATURE_SETPOINT, _waterLossTarget);
+
+    if (_state == DSTATE_DRYING) {
+        startPID();   // continue heating — SHT31 vent-guard protects if sensor is lost
     }
 }
 
