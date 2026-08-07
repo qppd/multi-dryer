@@ -10,11 +10,6 @@
 #include "alert_popup.h"
 #include "ui_optimistic_state.h"
 
-// Estimated Time of Completion target humidity (% RH considered "dried")
-#define EDT_TARGET_HUMIDITY_PCT  35.0f
-// Minimum elapsed minutes and humidity drop before EDT is meaningful
-#define EDT_MIN_ELAPSED_MINS     3.0f
-#define EDT_MIN_HUMIDITY_DROP    2.0f
 
 // Widget references for updates
 static lv_obj_t* tempMeter = NULL;
@@ -35,10 +30,6 @@ static lv_obj_t* edtLabel = NULL;
 static lv_obj_t* startBtn = NULL;
 static lv_obj_t* stopBtn = NULL;
 
-// EDT tracking state
-static float        edt_startHumidity = 0.0f;
-static unsigned long edt_startMs       = 0;
-static DryerState   edt_lastState      = STATE_IDLE;
 
 static void updateIndicator(lv_obj_t* dot, bool isOn);
 
@@ -64,12 +55,19 @@ static void startBtnCb(lv_event_t* e) {
     dryerData.heaterOn = true;
     dryerData.fanOn = true;
     dryerData.exhaustOn = false;
-    dryerData.dryingStartMs = millis();
     uiOptimisticSet(STATE_DRYING, true, true, false, false, true, 15000UL);
     applyStartStopVisibility(false, true);
     updateIndicator(heaterIndicator, true);
     updateIndicator(fanIndicator, true);
     updateIndicator(exhaustIndicator, false);
+
+    // Quick-start from the dashboard: send the current target temperature and
+    // water loss first (spaced 50 ms so the controller's single-slot command
+    // queue processes all three), then start the session.
+    sendSetTemperature(dryerData.targetTemp);
+    delay(50);
+    sendSetWaterLoss(dryerData.targetWaterLoss);
+    delay(50);
     sendStartDrying();
 }
 
@@ -412,19 +410,9 @@ void updateDashboardScreen() {
         { char _b[12]; snprintf(_b, sizeof(_b), "%.1f kg", dryerData.weight); lv_label_set_text(weightValueLabel, _b); }
     }
 
-// Water loss
+// Water loss (controller-authoritative)
     if (lv_obj_is_valid(waterLossLabel)) {
         float wl = dryerData.waterLoss;
-
-        // Nano-side recompute: only use local fallback when definitively DRYING.
-        // When Nano reports IDLE (e.g. after a watchdog restart), the local
-        // initialWeight is stale — using it would compute (oldWeight - 0)/oldWeight = 100%.
-        if (dryerData.systemState == STATE_DRYING && wl == 0.0f &&
-            dryerData.initialWeight > 0.0f && dryerData.initialWeight > dryerData.weight) {
-            float lost = dryerData.initialWeight - dryerData.weight;
-            wl = (lost / dryerData.initialWeight) * 100.0f;
-            if (wl < 0) wl = 0;
-        }
 
         if (wl >= 0.01f) {
             { char _b[12]; snprintf(_b, sizeof(_b), "%.1f%%", wl); lv_label_set_text(waterLossLabel, _b); }
@@ -503,11 +491,12 @@ case STATE_IDLE:
         lv_obj_set_style_text_color(connIcon, dryerData.connected ? COLOR_SUCCESS : COLOR_DANGER, 0);
     }
 
-    // Elapsed time
+    // Elapsed time — controller-authoritative (pause-aware, survives HMI reboot);
+    // shown during DRYING and frozen at its last value while PAUSED
     if (lv_obj_is_valid(elapsedLabel)) {
-        if (effectiveState == STATE_DRYING && dryerData.dryingStartMs > 0) {
-            unsigned long elapsed = millis() - dryerData.dryingStartMs;
-            unsigned long secs = elapsed / 1000;
+        if ((effectiveState == STATE_DRYING || effectiveState == STATE_PAUSED) &&
+            dryerData.dryingElapsedMs > 0) {
+            unsigned long secs = dryerData.dryingElapsedMs / 1000;
             unsigned long mins = secs / 60;
             unsigned long hrs = mins / 60;
             lv_label_set_text_fmt(elapsedLabel, "Elapsed: %luh %02lum", hrs, mins % 60);

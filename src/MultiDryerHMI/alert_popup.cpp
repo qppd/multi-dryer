@@ -228,13 +228,9 @@ void checkAlerts() {
         }
     }
 
-    // Drying complete detection
+    // Drying complete detection — elapsed time from the controller (pause-aware)
     if (dryerData.systemState == STATE_COMPLETE && lastKnownState == STATE_DRYING && !dryingCompleteShown) {
-        unsigned long elapsed = 0;
-        if (dryerData.dryingStartMs > 0) {
-            elapsed = millis() - dryerData.dryingStartMs;
-        }
-        showDryingComplete(dryerData.waterLoss, elapsed);
+        showDryingComplete(dryerData.waterLoss, dryerData.dryingElapsedMs);
     }
 
     lastKnownState = dryerData.systemState;

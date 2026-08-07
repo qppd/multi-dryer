@@ -42,11 +42,35 @@ extern uint8_t ssrStateFlags;
 
 // ── Command queue (ESP-Now callback → loop context) ───────────────────────────
 // The ESP-Now receive callback runs in the Wi-Fi task context — never call
-// blocking code (HX711 reads, I2C, prints) from there. We just store the
-// latest valid command and process it in espnowUpdate() from loop().
-static volatile uint8_t pendingCmdType  = 0;
-static volatile float   pendingCmdValue = 0.0f;
-static volatile bool    pendingCmdFlag  = false;
+// blocking code (HX711 reads, I2C, prints) from there. Commands are queued in
+// a small ring buffer (single producer = WiFi task, single consumer = loop)
+// and drained one per loop in espnowUpdate(). A queue (not a single slot)
+// guarantees rapid-fire bursts from the HMI — e.g. SET_TEMPERATURE →
+// SET_WATER_LOSS → START_DRYING — are never silently dropped, even if they
+// arrive during the ~300 ms HX711 read window.
+#define CMD_QUEUE_SIZE  8
+
+static volatile uint8_t cmdQueueTypes[CMD_QUEUE_SIZE];
+static volatile float   cmdQueueValues[CMD_QUEUE_SIZE];
+static volatile uint8_t cmdQueueHead = 0;   // producer index (WiFi task)
+static volatile uint8_t cmdQueueTail = 0;   // consumer index (loop)
+
+static bool cmdEnqueue(uint8_t type, float value) {
+    uint8_t next = (uint8_t)((cmdQueueHead + 1) % CMD_QUEUE_SIZE);
+    if (next == cmdQueueTail) return false;   // full — drop the newest
+    cmdQueueTypes[cmdQueueHead] = type;
+    cmdQueueValues[cmdQueueHead] = value;
+    cmdQueueHead = next;
+    return true;
+}
+
+static bool cmdDequeue(uint8_t* type, float* value) {
+    if (cmdQueueHead == cmdQueueTail) return false;
+    *type  = cmdQueueTypes[cmdQueueTail];
+    *value = cmdQueueValues[cmdQueueTail];
+    cmdQueueTail = (uint8_t)((cmdQueueTail + 1) % CMD_QUEUE_SIZE);
+    return true;
+}
 
 static void handleCmd(uint8_t cmdType, float value);
 
@@ -58,9 +82,7 @@ static void onEspNowReceive(const uint8_t* mac, const uint8_t* data, int len) {
         Serial.println("[ESP-NOW] Bad command packet (type/checksum)");
         return;
     }
-    pendingCmdType  = pkt->cmdType;
-    pendingCmdValue = pkt->value;
-    pendingCmdFlag  = true;
+    cmdEnqueue(pkt->cmdType, pkt->value);
 }
 
 // ── Send callback (Wi-Fi task context — keep it short) ────────────────────────
@@ -127,10 +149,12 @@ void initEspNow() {
 
 // ── Process queued commands + send periodic status (call every loop()) ────────
 void espnowUpdate() {
-    // 1) Handle any command the HMI sent (processed from loop context)
-    if (pendingCmdFlag) {
-        pendingCmdFlag = false;
-        handleCmd(pendingCmdType, pendingCmdValue);
+    // 1) Process one queued HMI command per loop iteration (none are dropped;
+    //    the queue holds the rest until the loop is free)
+    uint8_t cmdType;
+    float   cmdValue;
+    if (cmdDequeue(&cmdType, &cmdValue)) {
+        handleCmd(cmdType, cmdValue);
     }
 
     // 2) Periodic status broadcast (1 Hz)
@@ -151,12 +175,22 @@ static void handleCmd(uint8_t cmdType, float value) {
             sendStatusNow();
             break;
 
-        // Load cell calibration
+        // Load cell calibration — only allowed while IDLE. The HMI sends a TARE
+        // at every boot (boot screen → dashboard); if a session was restored,
+        // taring would destroy the saved zero reference and corrupt water loss.
         case CMD_TARE_SCALE:
-            tareLoadCell();
+            if (getDryerState() == DSTATE_IDLE) {
+                tareLoadCell();
+            } else {
+                Serial.println(F("[DRYER] TARE ignored — session active (would break water-loss reference)"));
+            }
             break;
         case CMD_CALIBRATE_SCALE:
-            calibrateLoadCell(value);
+            if (getDryerState() == DSTATE_IDLE) {
+                calibrateLoadCell(value);
+            } else {
+                Serial.println(F("[DRYER] CALIBRATE ignored — session active"));
+            }
             break;
 
         // Drying session control (state machine)
