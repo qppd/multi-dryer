@@ -4,6 +4,7 @@
 ![Platform](https://img.shields.io/badge/platform-ESP32%20%7C%20ESP32--S3-green)
 ![Transport](https://img.shields.io/badge/transport-ESP--NOW-orange)
 ![Status](https://img.shields.io/badge/status-hardware%20bring--up-lightgrey)
+![License](https://img.shields.io/badge/license-MIT-green)
 
 Smart food dehydration system built on a pair of ESP32 boards: a **controller** that runs the drying process (PTC heater, fans, load cell, temperature sensing) and a **touchscreen HMI** that provides the user interface. The two halves communicate **wirelessly over ESP-NOW** — no wiring between boards.
 
@@ -108,4 +109,8 @@ Full wiring plan: [`docs/schematic/wiring-diagram.md`](docs/schematic/wiring-dia
 
 - GitHub: [@qppd](https://github.com/qppd)
 - LinkedIn: [sajed-mendoza](https://www.linkedin.com/in/sajed-mendoza)
+
+## License
+
+Distributed under the [MIT License](LICENSE).
 
