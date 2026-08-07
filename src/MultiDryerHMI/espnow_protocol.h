@@ -1,13 +1,10 @@
 // espnow_protocol.h
 // Multi Dryer — Shared ESP-Now binary protocol
 //
-// Ported verbatim from references/HMIDisplay/espnow_protocol.h
-// (the HMI side uses this same header — keep it byte-identical).
-//
 // Controller (ESP32 38-pin) <-- ESP-Now --> HMIDisplay (ESP32-S3)
 //
 // Packet types:
-//   0x01  EspNowStatusPacket  — Controller → HMI  (SHT31 + load cell data)
+//   0x01  EspNowStatusPacket  — Controller → HMI  (sensor/state data)
 //   0x02  EspNowCmdPacket     — HMI → Controller  (control commands)
 //
 // Both ESP32 variants are little-endian Xtensa.
