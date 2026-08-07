@@ -50,9 +50,11 @@
 #endif
 
 // =========================
-// Reserved Pins
+// Sensors — I2C bus
 // =========================
 // SHT31 temperature/humidity sensor (I2C) — temperature feedback for PID control.
+// NOTE: this is the ONLY I2C device. The controller ⇄ HMI link is ESP-NOW only
+// (wireless) — no wired comms (no UART, no HMI I2C) are used.
 #ifndef SHT31_SDA_PIN
 #define SHT31_SDA_PIN 21
 #endif
@@ -61,14 +63,8 @@
 #define SHT31_SCL_PIN 22
 #endif
 
-// Optional wired HMI fallback (UART2). WROOM-32 only — do NOT use on
-// WROVER modules (GPIO 16/17 are PSRAM there). Default transport is ESP-NOW.
-#ifndef HMI_UART_TX_PIN
-#define HMI_UART_TX_PIN 17
-#endif
-
-#ifndef HMI_UART_RX_PIN
-#define HMI_UART_RX_PIN 16
-#endif
+// Spare digital: GPIO 16, 17, 18, 19, 23, 33 (16/17 = WROOM-32 only — do NOT
+// use on WROVER modules, where they are PSRAM).
+// Spare input-only (future analog, ADC1/WiFi-safe): GPIO 34, 36, 39.
 
 #endif // PINS_CONFIG_H
