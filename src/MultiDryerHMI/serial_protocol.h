@@ -32,6 +32,8 @@ void sendPIDStart();
 void sendPIDStop();
 void sendStartDrying();
 void sendStopDrying();
+void sendPauseDrying();
+void sendResumeDrying();
 void sendStatusRequest();
 void sendSetWaterLoss(float pct);
 void sendTareScale();

@@ -179,6 +179,14 @@ void sendStopDrying() {
     sendCmd(CMD_STOP_DRYING);
 }
 
+void sendPauseDrying() {
+    sendCmd(CMD_PAUSE_DRYING);
+}
+
+void sendResumeDrying() {
+    sendCmd(CMD_RESUME_DRYING);
+}
+
 void sendStatusRequest() {
     sendCmd(CMD_STATUS_REQUEST);
 }

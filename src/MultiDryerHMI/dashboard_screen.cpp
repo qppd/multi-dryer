@@ -55,7 +55,7 @@ static void startBtnCb(lv_event_t* e) {
     dryerData.heaterOn = true;
     dryerData.fanOn = true;
     dryerData.exhaustOn = false;
-    uiOptimisticSet(STATE_DRYING, true, true, false, false, true, 15000UL);
+    uiOptimisticSet(STATE_DRYING, true, true, false, false, true, false, false, 15000UL);
     applyStartStopVisibility(false, true);
     updateIndicator(heaterIndicator, true);
     updateIndicator(fanIndicator, true);
@@ -77,7 +77,7 @@ static void stopBtnCb(lv_event_t* e) {
     dryerData.heaterOn = false;
     dryerData.fanOn = false;
     dryerData.exhaustOn = true;
-    uiOptimisticSet(STATE_IDLE, false, false, true, true, false, 15000UL);
+    uiOptimisticSet(STATE_IDLE, false, false, true, true, false, false, false, 15000UL);
     applyStartStopVisibility(true, false);
     updateIndicator(heaterIndicator, false);
     updateIndicator(fanIndicator, false);
@@ -478,7 +478,7 @@ case STATE_IDLE:
             applyStartStopVisibility(false, false);
             break;
             case STATE_PAUSED:
-                applyStartStopVisibility(true, true);
+                applyStartStopVisibility(false, true);   // no START while paused — it would restart the session fresh; RESUME is on the control screen
                 break;
             default:
                 applyStartStopVisibility(true, false);

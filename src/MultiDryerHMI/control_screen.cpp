@@ -29,6 +29,8 @@ static lv_obj_t* waterLossSliderLabel = NULL;
 static lv_obj_t* currentTempLabel = NULL;
 static lv_obj_t* startDryingBtn = NULL;
 static lv_obj_t* stopDryingBtn = NULL;
+static lv_obj_t* pauseBtn = NULL;
+static lv_obj_t* resumeBtn = NULL;
 static lv_obj_t* tuyoBtn = NULL;
 static lv_obj_t* danggitBtn = NULL;
 static lv_obj_t* pusitBtn = NULL;
@@ -48,6 +50,17 @@ static void applyStartStopVisibility(bool showStart, bool showStop) {
     if (lv_obj_is_valid(stopDryingBtn)) {
         if (showStop) lv_obj_clear_flag(stopDryingBtn, LV_OBJ_FLAG_HIDDEN);
         else lv_obj_add_flag(stopDryingBtn, LV_OBJ_FLAG_HIDDEN);
+    }
+}
+
+static void applyPauseResumeVisibility(bool showPause, bool showResume) {
+    if (lv_obj_is_valid(pauseBtn)) {
+        if (showPause) lv_obj_clear_flag(pauseBtn, LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(pauseBtn, LV_OBJ_FLAG_HIDDEN);
+    }
+    if (lv_obj_is_valid(resumeBtn)) {
+        if (showResume) lv_obj_clear_flag(resumeBtn, LV_OBJ_FLAG_HIDDEN);
+        else lv_obj_add_flag(resumeBtn, LV_OBJ_FLAG_HIDDEN);
     }
 }
 
@@ -224,9 +237,10 @@ static void startDryingCb(lv_event_t* e) {
     dryerData.heaterOn = true;
     dryerData.fanOn = true;
     dryerData.exhaustOn = false;
-    uiOptimisticSet(STATE_DRYING, true, true, false, false, true, 15000UL);
+    uiOptimisticSet(STATE_DRYING, true, true, false, false, true, true, false, 15000UL);
     applyRelaySwitchStates(true, true, false);
     applyStartStopVisibility(false, true);
+    applyPauseResumeVisibility(true, false);
 
     // Temperature and water loss are already sent by preset callbacks / slider callback
     // Sending only START avoids ESP-Now packet loss from rapid-fire sends
@@ -242,11 +256,44 @@ static void stopDryingCb(lv_event_t* e) {
     dryerData.heaterOn = false;
     dryerData.fanOn = false;
     dryerData.exhaustOn = true;
-    uiOptimisticSet(STATE_IDLE, false, false, true, true, false, 15000UL);
+    uiOptimisticSet(STATE_IDLE, false, false, true, true, false, false, false, 15000UL);
     applyRelaySwitchStates(false, false, true);
     applyStartStopVisibility(true, false);
+    applyPauseResumeVisibility(false, false);
 
     sendStopDrying();
+}
+
+// Pause drying callback
+static void pauseDryingCb(lv_event_t* e) {
+    (void)e;
+    // Optimistic local state (UI reacts immediately)
+    dryerData.systemState = STATE_PAUSED;
+    dryerData.heaterOn = false;
+    dryerData.fanOn = false;
+    dryerData.exhaustOn = false;
+    uiOptimisticSet(STATE_PAUSED, false, false, false, false, true, false, true, 15000UL);
+    applyRelaySwitchStates(false, false, false);
+    applyStartStopVisibility(false, true);   // STOP stays available while paused
+    applyPauseResumeVisibility(false, true); // hide PAUSE, show RESUME
+
+    sendPauseDrying();
+}
+
+// Resume drying callback
+static void resumeDryingCb(lv_event_t* e) {
+    (void)e;
+    // Optimistic local state (UI reacts immediately)
+    dryerData.systemState = STATE_DRYING;
+    dryerData.heaterOn = true;
+    dryerData.fanOn = true;
+    dryerData.exhaustOn = false;
+    uiOptimisticSet(STATE_DRYING, true, true, false, false, true, true, false, 15000UL);
+    applyRelaySwitchStates(true, true, false);
+    applyStartStopVisibility(false, true);
+    applyPauseResumeVisibility(true, false); // show PAUSE, hide RESUME
+
+    sendResumeDrying();
 }
 
 // Helper: create a labeled switch row
@@ -477,6 +524,24 @@ lv_obj_t* createControlScreen() {
     stopDryingBtn = createButton(rightCol, LV_SYMBOL_STOP "  STOP DRYING", LV_PCT(100), 55, &style_btn_danger);
     lv_obj_add_event_cb(stopDryingBtn, stopDryingCb, LV_EVENT_CLICKED, NULL);
 
+    // Pause / Resume row (two half-width buttons, hidden until DRYING/PAUSED)
+    lv_obj_t* pauseRow = lv_obj_create(rightCol);
+    lv_obj_set_size(pauseRow, LV_PCT(100), 55);
+    lv_obj_set_style_bg_opa(pauseRow, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(pauseRow, 0, 0);
+    lv_obj_set_style_pad_all(pauseRow, 0, 0);
+    lv_obj_set_scrollbar_mode(pauseRow, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_flex_flow(pauseRow, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(pauseRow, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    pauseBtn = createButton(pauseRow, LV_SYMBOL_PAUSE "  PAUSE", LV_PCT(48), 55, &style_btn_nav);
+    lv_obj_add_event_cb(pauseBtn, pauseDryingCb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_flag(pauseBtn, LV_OBJ_FLAG_HIDDEN);
+
+    resumeBtn = createButton(pauseRow, LV_SYMBOL_PLAY "  RESUME", LV_PCT(48), 55, &style_btn_success);
+    lv_obj_add_event_cb(resumeBtn, resumeDryingCb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_flag(resumeBtn, LV_OBJ_FLAG_HIDDEN);
+
     // Set initial mode state (Auto = relay switches disabled)
     if (dryerData.dryingModeAuto) {
         lv_obj_add_state(heaterSwitch, LV_STATE_DISABLED);
@@ -505,27 +570,33 @@ void updateControlScreen() {
     // This prevents waiting for state relay from the controller.
     bool optimisticActive = uiOptimisticIsActive();
 
-    // ---- START/STOP Button Visibility + Relay indicators ----
+    // ---- START/STOP/PAUSE/RESUME visibility + Relay indicators ----
     if (optimisticActive) {
         applyStartStopVisibility(gUiOptimisticState.showStart, gUiOptimisticState.showStop);
+        applyPauseResumeVisibility(gUiOptimisticState.showPause, gUiOptimisticState.showResume);
         applyRelaySwitchStates(gUiOptimisticState.heaterOn, gUiOptimisticState.fanOn, gUiOptimisticState.exhaustOn);
     } else {
         switch (dryerData.systemState) {
-case STATE_IDLE:
+            case STATE_IDLE:
             case STATE_COMPLETE:
                 applyStartStopVisibility(true, false);
+                applyPauseResumeVisibility(false, false);
                 break;
             case STATE_DRYING:
                 applyStartStopVisibility(false, true);
+                applyPauseResumeVisibility(true, false);
+                break;
+            case STATE_PAUSED:
+                applyStartStopVisibility(false, true);
+                applyPauseResumeVisibility(false, true);   // show RESUME
                 break;
             case STATE_ERROR:
                 applyStartStopVisibility(false, false);
-                break;
-            case STATE_PAUSED:
-                applyStartStopVisibility(true, true);
+                applyPauseResumeVisibility(false, false);
                 break;
             default:
                 applyStartStopVisibility(true, false);
+                applyPauseResumeVisibility(false, false);
                 break;
         }
         applyRelaySwitchStates(dryerData.heaterOn, dryerData.fanOn, dryerData.exhaustOn);

@@ -12,12 +12,15 @@ struct UiOptimisticState {
     bool exhaustOn;
     bool showStart;
     bool showStop;
+    bool showPause;
+    bool showResume;
 };
 
 extern UiOptimisticState gUiOptimisticState;
 
 void uiOptimisticSet(DryerState state, bool heaterOn, bool fanOn, bool exhaustOn,
-                     bool showStart, bool showStop, unsigned long graceMs = 15000UL);
+                     bool showStart, bool showStop, bool showPause, bool showResume,
+                     unsigned long graceMs = 15000UL);
 bool uiOptimisticIsActive();
 void uiOptimisticClear();
 
