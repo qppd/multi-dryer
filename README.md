@@ -46,9 +46,11 @@ multi-dryer/
     ├── api/espnow-protocol.md         # ESP-NOW protocol/API reference
     ├── stacks/tech-stack.md           # hardware + firmware + library stack
     ├── guides/bring-up-checklist.md   # ordered boot/hardware verification
+    ├── guides/calibration-guide.md    # TARE + CALIBRATE:<kg>, NVS persistence
+    ├── guides/troubleshooting.md      # pairing, vent guard, NVS issues
     ├── schematic/hardware-wiring.md   # written pin-by-pin wiring plan
     ├── schematic/wiring-diagram.md    # interactive wiring diagram link (Cirkit Designer)
-    └── diagrams/                      # (future) diagrams
+    └── diagrams/                      # block diagram + flow charts (Mermaid)
 ```
 
 ## Documentation
@@ -60,6 +62,9 @@ multi-dryer/
 - [Hardware wiring plan](docs/schematic/hardware-wiring.md) — written pin-by-pin reference
 - [Bring-up checklist](docs/guides/bring-up-checklist.md) — ordered boot/hardware verification
 - [Calibration guide](docs/guides/calibration-guide.md) — TARE + CALIBRATE:<kg> procedure, NVS persistence
+- [Troubleshooting guide](docs/guides/troubleshooting.md) — pairing, no-status-packet, sensor-fail vent behavior
+- [System architecture](docs/system-architecture.md) — modules, data flow, design decisions
+- [Block diagram](docs/diagrams/block-diagram.md) / [Flow charts](docs/diagrams/flow-chart.md) — Mermaid diagrams
 
 ## Hardware
 
