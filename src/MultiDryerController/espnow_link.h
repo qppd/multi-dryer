@@ -209,12 +209,15 @@ static void handleCmd(uint8_t cmdType, float value) {
             resumeDrying();
             break;
 
-        // Process parameters
+        // Process parameters — persist after each change so a reboot keeps the
+        // HMI's configured values even when no session is active.
         case CMD_SET_TEMPERATURE:
             setPIDSetpoint(value);
+            persistDryerConfig();
             break;
         case CMD_SET_WATER_LOSS:
             setWaterLossTarget(value);
+            persistDryerConfig();
             break;
 
         // Manual overrides (HMI manual-operation screen) — any manual command

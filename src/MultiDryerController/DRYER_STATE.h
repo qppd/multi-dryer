@@ -61,6 +61,7 @@ uint32_t getEstimatedEDT()    { return _estimatedEDT; }
 // Forward declarations — persistence functions are defined at the bottom
 static void saveDryingSession(uint8_t state);
 static void clearDryingSession();
+static void persistDryerConfig();
 static void restoreDryingSession();
 
 // ── Control ───────────────────────────────────────────────────────────────────
@@ -202,16 +203,40 @@ static void clearDryingSession() {
     prefs.end();
 }
 
-// Called from initDrying() — restores an interrupted session, if any.
+// Persist the configured setpoint + water-loss target so a reboot keeps the
+// HMI's values even when no session is active. Called from the ESP-NOW
+// command handler whenever the HMI changes a parameter. Doesn't touch the
+// session keys (initW/runMs/hxoff/state) — those are owned by
+// saveDryingSession()/clearDryingSession(), which write the marker on every
+// transition. Writing 'state' here could resurrect a completed session: the
+// marker is IDLE after auto-complete, but COMPLETE written here would restore
+// as DRYING with stale weight data.
+static void persistDryerConfig() {
+    Preferences prefs;
+    prefs.begin(DRYER_PREFS_NS, false);
+    prefs.putUChar("magic", DRYER_PREFS_MAGIC);
+    prefs.putFloat("wlTgt", _waterLossTarget);
+    prefs.putFloat("setpt", (float)TEMPERATURE_SETPOINT);
+    prefs.end();
+}
+
+// Called from initDrying() — restores the last configured values and, if one
+// was active, resumes the interrupted session.
 static void restoreDryingSession() {
     Preferences prefs;
     prefs.begin(DRYER_PREFS_NS, true);
     if (prefs.getUChar("magic", 0) != DRYER_PREFS_MAGIC) { prefs.end(); return; }
     uint8_t savedState = prefs.getUChar("state", DSTATE_IDLE);
+
+    // Config (setpoint + water-loss target) survives even when no session is
+    // active, so a reboot keeps the HMI's configured values.
+    TEMPERATURE_SETPOINT = (double)prefs.getFloat("setpt", (float)TEMPERATURE_SETPOINT);
+    _waterLossTarget     = prefs.getFloat("wlTgt", _waterLossTarget);
+    Serial.printf("[DRYER] config restored — setpoint %.1f C, wlTgt %.1f %%\n",
+                  TEMPERATURE_SETPOINT, _waterLossTarget);
+
     if (savedState == DSTATE_IDLE) { prefs.end(); return; }
 
-    TEMPERATURE_SETPOINT = (double)prefs.getFloat("setpt", 0.0f);
-    _waterLossTarget     = prefs.getFloat("wlTgt", 0.0f);
     _initialWeightKg     = prefs.getFloat("initW", 0.0f);
     _runMs               = prefs.getULong("runMs", 0);
     _runtimeSeconds      = _runMs / 1000UL;
