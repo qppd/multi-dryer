@@ -67,7 +67,7 @@ multi-dryer/
 - [Block diagram](docs/diagrams/block-diagram.md) / [Flow charts](docs/diagrams/flow-chart.md) — Mermaid diagrams
 - [Safety & thermal design](docs/guides/safety-and-thermal.md) — SSR strategy, fuses, thermal cutoff, vent guard
 - [HMI user guide](docs/guides/hmi-user-guide.md) — screens, buttons, first-use workflow
-- [UI screenshot renderer](sim/screenshot/README.md) — render real HMI screens to PNG in `docs/ui/` on a PC (no hardware needed)
+- [UI screenshots](docs/ui/) — PNG previews of the real HMI screens (rendered with a headless LVGL tool kept out of the repo)
 
 ## Hardware
 

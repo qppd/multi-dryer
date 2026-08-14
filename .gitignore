@@ -1,6 +1,9 @@
 # Local reference materials (wiring plans, planning notes, reference projects)
 references/
 
+# Local UI screenshot renderer tool (kept out of the repo)
+sim/
+
 # ── Arduino ─────────────────────────────────────────────────────────────────
 # Arduino IDE build output (usually outside the sketch folder, but sometimes in it)
 build/
