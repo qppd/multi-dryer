@@ -44,22 +44,15 @@ AC-L ──┬─[F1 10A fuse]───[Thermal cutoff]── SSR1 (load term.) 
 - Each SSR's **AC side is opto-isolated** from its DC input — the 220 V side never touches the ESP32 electrically.
 - Use SSRs rated for **3–32 VDC input** (Fotek/Omron style) so the ESP32's 3.3 V logic drives them directly (≈5–10 mA).
 - Mount SSRs on heat sinks; keep AC wiring physically separated from all low-voltage signal wiring (cable glands / separate ducting).
-- Add an **RC snubber** (e.g., 100 Ω / 0.1 µF, 250 VAC) across fan loads if you see false switching from motor noise.
 
 ### 2.2 SSR Drive Circuit (per output × 4)
 
 ```
-ESP32 GPIO ──[220 Ω]──┬── SSR input (+)      SSR input (−) ── GND
-                      │
-                    [10 kΩ]                (10 kΩ pull-down to GND =
-                     │                       fail-safe OFF at boot)
-                     GND
+ESP32 GPIO ── SSR input (+)      SSR input (−) ── GND
 ```
 
-- The **10 kΩ pull-down guarantees all SSRs are OFF** during the ~1 s boot window, when GPIOs are floating (high-Z). The dryer can never energize the heater or fans at power-on.
-- **The 220 Ω resistor is conditional:** many SSRs already contain an input-limiting resistor — then it's optional. If the SSR input is a bare LED, 220 Ω is required. Verify your SSR's input before assembly.
-- Firmware must also set every SSR pin `pinMode(OUTPUT); digitalWrite(LOW);` as the **first thing in `setup()`** (belt-and-suspenders with the pull-downs).
-- If your SSR is a **5–32 VDC input** type (won't trigger reliably at 3.3 V), insert an NPN transistor driver instead: `GPIO ──[1 kΩ]── Base(2N2222/BC547), Emitter→GND, Collector→SSR(+), SSR(−)→GND`, with a 10 kΩ pull-down on the base.
+- **Fail-safe is firmware-enforced:** every SSR pin is set `pinMode(OUTPUT); digitalWrite(LOW);` as the **first thing in `setup()`** (before WiFi/ESP-NOW init), so no SSR can energize until the firmware explicitly enables it.
+- Verify the SSR's input triggers reliably at 3.3 V logic (3–32 VDC input types). If the module needs a higher drive level, use a 3.3 V-logic-compatible SSR rather than adding external driver circuitry.
 
 ### 2.3 Load Cell + HX711
 
@@ -67,7 +60,7 @@ ESP32 GPIO ──[220 Ω]──┬── SSR input (+)      SSR input (−) ─�
 Load cell (4-wire):  Red→E+   Black→E−   Green→A+   White→A−   Shield→GND
 
 HX711 module          ESP32 (38-pin)
-  VCC      ──────────  3V3          (or 5 V, see §4.2)
+  VCC      ──────────  3V3
   GND      ──────────  GND
   DOUT     ──────────  GPIO 35      (input-only pin — safe)
   SCK      ──────────  GPIO 32
@@ -104,7 +97,6 @@ SHT31  SDA ── GPIO 21      SHT31  SCL ── GPIO 22      VIN ── 3V3    
 ```
 
 - Address **0x44** (0x45 if ADDR tied HIGH). Driver: `src/MultiDryerController/SHT31_CONFIG.h` (non-blocking state machine, CRC-8, ported from the FishDryer baseline onto the hardware I2C bus).
-- Most SHT31 breakout boards include 4.7 kΩ pull-ups on SDA/SCL. If yours has none, add 4.7 kΩ from each line to 3V3.
 - Temp feedback feeds PTC control/PID, and temp/humidity are reported to the HMI over ESP-NOW.
 
 ---
@@ -133,7 +125,7 @@ GPIO 6–11 are bonded to the module's SPI flash — never available. Not used.
 
 ### 3.3 No boot-PWM/HIGH pins used for outputs
 
-GPIO 1, 3 (serial), 5, 14, 15 drive HIGH or PWM at reset. An SSR on GPIO 14 could click/pulse briefly at every power-on; we avoid that class entirely. All four SSR lines are plain, clean GPIOs **plus** an external pull-down, so outputs are provably OFF until the firmware enables them.
+GPIO 1, 3 (serial), 5, 14, 15 drive HIGH or PWM at reset. An SSR on GPIO 14 could click/pulse briefly at every power-on; we avoid that class entirely. All four SSR lines are plain, clean GPIOs, and the firmware forces them LOW at the top of `setup()`, so outputs stay OFF until explicitly enabled.
 
 ### 3.4 UART0 untouched
 
@@ -158,9 +150,8 @@ GPIO 1/3 remain free → flashing and serial debugging always work with peripher
 - 5 V PSU (e.g., Hi-Link HLK-PM03 or similar **5 V / ≥3 A**, mains-isolated) → ESP32 **5V** pin. The DevKitC's onboard regulator makes 3.3 V.
 - Optional 5 V for HX711: see below.
 
-### 5.2 HX711 supply — two valid options
-- **Option A (recommended for v1): HX711 VCC → 3V3.** Direct logic levels, no dividers. Slightly lower bridge excitation, fine for 1–50 kg cells.
-- **Option B (best accuracy): HX711 VCC → 5 V** (better SNR) with a **voltage divider on DOUT** (10 kΩ→GPIO35, 20 kΩ→GND) to drop the 5 V output to 3.3 V. SCK (3.3 V) is read fine by the HX711. If a clone module misbehaves at 5 V with 3.3 V logic, fall back to Option A.
+### 5.2 HX711 supply
+- **HX711 VCC → 3V3** (recommended): direct logic levels, no level shifting. Slightly lower bridge excitation, fine for 1–50 kg cells.
 - **DOUT floats when the HX711 is unpowered** (GPIO 35 is input-only with no internal pull-up) — firmware must gate reads on `scale.is_ready()` (the FishDryer baseline already does) so a floating DOUT is never mistaken for a valid reading.
 
 ### 5.3 Verify module type (important!)
@@ -185,9 +176,7 @@ GPIO 1/3 remain free → flashing and serial debugging always work with peripher
 | Load cell | 1–50 kg, 4-wire | 1 |
 | SHT31 breakout | I2C temp/humidity, addr 0x44 | 1 |
 | 5 V isolated PSU | ≥3 A | 1 |
-| Resistors | 220 Ω (4), 10 kΩ (4, SSR pull-downs), 1 kΩ (option) | — |
 | Fuses | 10 A / 5 A / 2 A / 2 A | 4 |
-| RC snubbers | 100 Ω + 0.1 µF 250 VAC | 2 |
 | Wire, terminals, heatsinks, enclosure | — | — |
 
 ---
@@ -195,7 +184,7 @@ GPIO 1/3 remain free → flashing and serial debugging always work with peripher
 ## 7. Verification Checklist
 
 1. **Boot test:** with everything connected, open the serial monitor — board must boot normally (no download-mode loop, no crash). 
-2. **Fail-safe test:** right after power-on (before firmware enables outputs), measure each SSR input — must read **LOW** (pull-downs working). Heater/fans must stay off.
+2. **Fail-safe test:** with everything connected, power on and confirm **no SSR/load toggles** during the boot window — the firmware forces every SSR pin LOW at the top of `setup()`, before WiFi/ESP-NOW init.
 3. **Flash test:** `esptool.py chip-id` / Arduino upload must succeed with peripherals attached (proves no strapping pin is loaded down).
 4. **WiFi/ESP-NOW test:** enable ESP-NOW (or run `WiFi.scanNetworks()`) with SSRs + HX711 connected — no hangs, and control still works (proves ADC2/WiFi rule is not violated).
 5. **Load cell test:** send `TARE` then `CALIBRATE:<kg>` (FishDryer protocol) — weight reads correctly on the HMI.
