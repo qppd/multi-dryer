@@ -19,6 +19,7 @@
 #include "lvgl_v8_port.h"
 
 #include "dryer_data.h"
+#include "drying_presets.h"
 #include "ui_theme.h"
 #include "ui_styles.h"
 #include "serial_protocol.h"
@@ -44,6 +45,9 @@ void setup() {
 
     // Initialize dryer data with defaults
     initDryerData();
+
+    // Load saved drying presets (seeds Tuyo/Danggit/Pusit on first boot)
+    presetsInit();
 
     // Initialize display board
     Serial.println("[HMI] Initializing display board...");

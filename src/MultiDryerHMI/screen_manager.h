@@ -13,6 +13,7 @@ enum ScreenId {
     SCREEN_CONTROL,
     SCREEN_ANALYTICS,
     SCREEN_DIAGNOSTICS,
+    SCREEN_MANUAL,        // HOW TO USE (step-by-step instruction guide)
     SCREEN_COUNT
 };
 

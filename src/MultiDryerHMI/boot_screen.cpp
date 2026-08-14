@@ -7,7 +7,6 @@
 #include "ui_styles.h"
 #include "screen_manager.h"
 #include "serial_protocol.h"
-#include "solaraw.h"
 
 // Timer callback: transition to dashboard after boot.
 // NOTE: Do NOT call lv_timer_del() here. The timer is created with
@@ -30,19 +29,19 @@ lv_obj_t* createBootScreen() {
     lv_obj_add_style(scr, &style_screen_bg, 0);
     lv_obj_set_scrollbar_mode(scr, LV_SCROLLBAR_MODE_OFF);
 
-    // ---- Logo image (compiled C array) ----
-    lv_obj_t* icon = lv_img_create(scr);
-    lv_img_set_src(icon, &solaraw);
-    lv_img_set_zoom(icon, 102);  // ~40% scale (256 = 100%)
-    lv_obj_align(icon, LV_ALIGN_CENTER, 0, -100);
-    Serial.println("[BOOT] Using compiled solaraw image (C array)");
+    // ---- Title (brand name) ----
+    lv_obj_t* title = lv_label_create(scr);
+    lv_label_set_text(title, "Multi-Purpose Dryer");
+    lv_obj_set_style_text_font(title, FONT_HUGE, 0);
+    lv_obj_set_style_text_color(title, COLOR_TEXT_PRIMARY, 0);
+    lv_obj_align(title, LV_ALIGN_CENTER, 0, -70);
 
     // ---- Subtitle (static) ----
     lv_obj_t* subtitle = lv_label_create(scr);
     lv_label_set_text(subtitle, "Smart Drying System");
     lv_obj_set_style_text_font(subtitle, FONT_MEDIUM, 0);
     lv_obj_set_style_text_color(subtitle, COLOR_TEXT_SECONDARY, 0);
-    lv_obj_align(subtitle, LV_ALIGN_CENTER, 0, 15);
+    lv_obj_align(subtitle, LV_ALIGN_CENTER, 0, -20);
 
     // ---- Static status label (no animation) ----
     lv_obj_t* status = lv_label_create(scr);

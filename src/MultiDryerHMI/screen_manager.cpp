@@ -9,6 +9,7 @@
 #include "control_screen.h"
 #include "analytics_screen.h"
 #include "diagnostics_screen.h"
+#include "manual_operation_screen.h"
 #include "lvgl_v8_port.h"
 
 static ScreenId currentScreen = SCREEN_BOOT;
@@ -23,6 +24,7 @@ static lv_obj_t* createScreen(ScreenId id) {
         case SCREEN_CONTROL:     return createControlScreen();
         case SCREEN_ANALYTICS:   return createAnalyticsScreen();
         case SCREEN_DIAGNOSTICS: return createDiagnosticsScreen();
+        case SCREEN_MANUAL:      return createManualOperationScreen();
         default: return NULL;
     }
 }
@@ -74,6 +76,7 @@ void loadScreen(ScreenId id) {
             case SCREEN_CONTROL:     screenName = "CONTROL"; break;
             case SCREEN_ANALYTICS:   screenName = "ANALYTICS"; break;
             case SCREEN_DIAGNOSTICS: screenName = "DIAGNOSTICS"; break;
+            case SCREEN_MANUAL:      screenName = "HOW TO USE"; break;
             default:                 screenName = "UNKNOWN"; break;
         }
         Serial.print("[HMI] Screen Loaded: ");
@@ -106,6 +109,7 @@ void updateCurrentScreen() {
         case SCREEN_CONTROL:     updateControlScreen(); break;
         case SCREEN_ANALYTICS:   updateAnalyticsScreen(); break;
         case SCREEN_DIAGNOSTICS: updateDiagnosticsScreen(); break;
+        case SCREEN_MANUAL:      updateManualOperationScreen(); break;
         default: break;
     }
     

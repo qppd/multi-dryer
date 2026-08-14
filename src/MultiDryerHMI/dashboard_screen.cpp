@@ -48,6 +48,7 @@ static void applyStartStopVisibility(bool showStart, bool showStop) {
 static void navControlCb(lv_event_t* e) { (void)e; loadScreen(SCREEN_CONTROL); }
 static void navAnalyticsCb(lv_event_t* e) { (void)e; loadScreen(SCREEN_ANALYTICS); }
 static void navDiagnosticsCb(lv_event_t* e) { (void)e; loadScreen(SCREEN_DIAGNOSTICS); }
+static void navHowToCb(lv_event_t* e) { (void)e; loadScreen(SCREEN_MANUAL); }
 
 static void startBtnCb(lv_event_t* e) {
     (void)e;
@@ -182,7 +183,7 @@ lv_obj_t* createDashboardScreen() {
     lv_obj_set_scrollbar_mode(scr, LV_SCROLLBAR_MODE_OFF);
 
     // ==================== TOP BAR ====================
-    lv_obj_t* topBar = createTopBar(scr, "SolAraw", false);
+    lv_obj_t* topBar = createTopBar(scr, "Multi-Purpose Dryer", false);
 
     // Connection status in top bar
     connIcon = lv_label_create(topBar);
@@ -364,6 +365,9 @@ lv_obj_t* createDashboardScreen() {
 
     lv_obj_t* setTempBtn = createButton(bottomBar, LV_SYMBOL_SETTINGS " SET TEMP", 180, 44, &style_btn_primary);
     lv_obj_add_event_cb(setTempBtn, navControlCb, LV_EVENT_CLICKED, NULL);
+
+    lv_obj_t* howToBtn = createButton(bottomBar, LV_SYMBOL_EYE_OPEN " HOW TO USE", 180, 44, &style_btn_nav);
+    lv_obj_add_event_cb(howToBtn, navHowToCb, LV_EVENT_CLICKED, NULL);
 
     return scr;
 }

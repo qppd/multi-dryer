@@ -14,7 +14,7 @@ Smart food dehydration system built on a pair of ESP32 boards: a **controller** 
 - **Water-loss tracking** — load cell (HX711) measures the product weight; water loss is computed as % of the initial weight, with a configurable auto-complete target.
 - **Drying state machine** — `IDLE → DRYING ⇄ PAUSED → COMPLETE`, with pause-aware runtime accounting and a rate-based *estimated drying time* (EDT).
 - **Session persistence (NVS)** — interrupted drying sessions survive reboot/power-cycle: initial weight + HX711 zero reference, elapsed runtime, and targets are restored automatically (DRYING re-enables the PID). The last setpoint and water-loss target persist even when idle.
-- **Full HMI control** — LVGL v8 touchscreen UI: dashboard, control, manual operation, analytics, diagnostics screens + completion alerts. Start / stop / pause / resume, setpoint and water-loss presets, live weight, water loss, runtime and EDT.
+- **Full HMI control** — LVGL v8 touchscreen UI: dashboard, control, manual operation, analytics, diagnostics screens + completion alerts. Start / stop / pause / resume, **user-managed drying presets** (name + temperature + water-loss target, add/delete, saved in HMI NVS), live weight, water loss, runtime and EDT.
 - **Manual overrides** — heater / inlet fan / exhaust toggles; any manual command ends an active session first so manual and automatic control never fight.
 - **Boot- and WiFi-safe pin map** — no strapping, flash, or ADC2 pins used; fail-safe SSR pull-downs (all outputs OFF at power-on).
 
@@ -65,6 +65,9 @@ multi-dryer/
 - [Troubleshooting guide](docs/guides/troubleshooting.md) — pairing, no-status-packet, sensor-fail vent behavior
 - [System architecture](docs/system-architecture.md) — modules, data flow, design decisions
 - [Block diagram](docs/diagrams/block-diagram.md) / [Flow charts](docs/diagrams/flow-chart.md) — Mermaid diagrams
+- [Safety & thermal design](docs/guides/safety-and-thermal.md) — SSR strategy, fuses, thermal cutoff, vent guard
+- [HMI user guide](docs/guides/hmi-user-guide.md) — screens, buttons, first-use workflow
+- [UI screenshot renderer](sim/screenshot/README.md) — render real HMI screens to PNG in `docs/ui/` on a PC (no hardware needed)
 
 ## Hardware
 
@@ -100,7 +103,7 @@ Full wiring plan: [`docs/schematic/hardware-wiring.md`](docs/schematic/hardware-
 - Libraries: [`br3ttb/PID_v1`](https://github.com/br3ttb/Arduino-PID-Library), [`bogde/HX711`](https://github.com/bogde/HX711) (`Preferences` is built-in)
 
 **HMI** (`src/MultiDryerHMI`)
-- **LVGL 8.x** (enable fonts *Montserrat 14/16/20/24/30/36/48* and widgets *meter/chart/bar/slider/switch/tabview/checkbox/spinner* in `lv_conf.h`)
+- **LVGL 8.x** (enable fonts *Montserrat 14/16/20/24/30/36/48* and widgets *meter/chart/bar/slider/switch/tabview/checkbox/spinner/keyboard/textarea* in `lv_conf.h`)
 - **ESP32_Display_Panel** library (`esp_display_panel.hpp`)
 - ⚠️ `esp_panel_board_custom_conf.h` is configured for the **Waveshare ESP32-S3-Touch-LCD-7** — verify it matches your display/touch hardware, or init will fail silently.
 

@@ -8,14 +8,13 @@
 #include "screen_manager.h"
 #include "serial_protocol.h"
 #include "ui_optimistic_state.h"
+#include "drying_presets.h"
 
-// Preset enumeration
-enum DryingPreset {
-    PRESET_TUYO,
-    PRESET_DANGGIT,
-    PRESET_PUSIT,
-    PRESET_OTHERS
-};
+// Presets are managed dynamically from HMI NVS (see drying_presets.h) and
+// rendered in a scrollable row. selectedPresetIdx = index into the saved
+// preset list; -1 means Custom (manual +/− temperature row).
+#define PRESET_BTN_W    110
+#define PRESET_BTN_H    52
 
 // Widget references
 static lv_obj_t* tempSetLabel = NULL;
@@ -31,14 +30,11 @@ static lv_obj_t* startDryingBtn = NULL;
 static lv_obj_t* stopDryingBtn = NULL;
 static lv_obj_t* pauseBtn = NULL;
 static lv_obj_t* resumeBtn = NULL;
-static lv_obj_t* tuyoBtn = NULL;
-static lv_obj_t* danggitBtn = NULL;
-static lv_obj_t* pusitBtn = NULL;
-static lv_obj_t* othersBtn = NULL;
-static lv_obj_t* manualTempRow = NULL;  // Hidden when preset selected
+static lv_obj_t* presetRow = NULL;       // scrollable preset button row
+static lv_obj_t* manualTempRow = NULL;   // hidden while a preset is selected
 
 static float tempSetpoint = 60.0f;
-static DryingPreset selectedPreset = PRESET_OTHERS;
+static int   selectedPresetIdx = -1;     // -1 = Custom (manual +/− row)
 
 // Optimistic UI state after START/STOP click so indicators/buttons react
 // immediately without waiting for the next status packet from controller.
@@ -79,84 +75,392 @@ static void applyRelaySwitchStates(bool heaterOn, bool fanOn, bool exhaustOn) {
     }
 }
 
-// Preset selection callbacks
-static void presetTuyoCb(lv_event_t* e) {
-    (void)e;
-    selectedPreset = PRESET_TUYO;
-    tempSetpoint = 60.0f;
-    dryerData.targetTemp = 60.0f;
-    { char _b[12]; snprintf(_b, sizeof(_b), "%.0f \xC2\xB0C", tempSetpoint); lv_label_set_text(tempSetLabel, _b); }
-    sendSetTemperature(60.0f);
-    
-    // Hide manual controls, show preset buttons highlighted
-    lv_obj_add_flag(manualTempRow, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_set_style_bg_color(tuyoBtn, COLOR_ACCENT, 0);
-    lv_obj_set_style_bg_color(danggitBtn, COLOR_BG_BUTTON, 0);
-    lv_obj_set_style_bg_color(pusitBtn, COLOR_BG_BUTTON, 0);
-    lv_obj_set_style_bg_color(othersBtn, COLOR_BG_BUTTON, 0);
+// ── Dynamic preset row ────────────────────────────────────────────────────────
+// Forward declarations (defined below)
+static void presetSelectCb(lv_event_t* e);
+static void openPresetManagerCb(lv_event_t* e);
+static void presetDeleteCb(lv_event_t* e);
+static void refreshPresetUIAsync(void* arg);
+
+static void highlightPresetButtons() {
+    if (!lv_obj_is_valid(presetRow)) return;
+    uint32_t cnt = lv_obj_get_child_cnt(presetRow);
+    for (uint32_t i = 0; i < cnt; i++) {
+        lv_obj_t* btn = lv_obj_get_child(presetRow, i);
+        if (!btn) continue;
+        int idx = (int)(intptr_t)lv_obj_get_user_data(btn);
+        lv_obj_set_style_bg_color(btn, (idx == selectedPresetIdx) ? COLOR_ACCENT : COLOR_BG_BUTTON, 0);
+    }
 }
 
-static void presetDanggitCb(lv_event_t* e) {
-    (void)e;
-    selectedPreset = PRESET_DANGGIT;
-    tempSetpoint = 60.0f;
-    dryerData.targetTemp = 60.0f;
-    { char _b[12]; snprintf(_b, sizeof(_b), "%.0f \xC2\xB0C", tempSetpoint); lv_label_set_text(tempSetLabel, _b); }
-    sendSetTemperature(60.0f);
-    
-    // Hide manual controls, show preset buttons highlighted
-    lv_obj_add_flag(manualTempRow, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_set_style_bg_color(tuyoBtn, COLOR_BG_BUTTON, 0);
-    lv_obj_set_style_bg_color(danggitBtn, COLOR_ACCENT, 0);
-    lv_obj_set_style_bg_color(pusitBtn, COLOR_BG_BUTTON, 0);
-    lv_obj_set_style_bg_color(othersBtn, COLOR_BG_BUTTON, 0);
+// Rebuild the preset button row from the saved list. Called at screen creation;
+// after add/delete it runs via lv_async_call (never from inside a callback of a
+// widget this function deletes).
+static void rebuildPresetRow() {
+    if (!lv_obj_is_valid(presetRow)) return;
+    lv_obj_clean(presetRow);
+
+    int n = presetsGetCount();
+    for (int i = 0; i < n; i++) {
+        const DryingPreset* p = presetsGet(i);
+        char _b[32];
+        // Truncate long names so the chip stays readable
+        char shortName[16];
+        int len = (int)strlen(p->name);
+        if (len > 10) {
+            memcpy(shortName, p->name, 10);
+            memcpy(shortName + 10, "\xE2\x80\xA6", 3);   // "…"
+            shortName[13] = '\0';
+        } else {
+            strcpy(shortName, p->name);
+        }
+        snprintf(_b, sizeof(_b), "%s\n%.0f\xC2\u00B0C", shortName, p->tempC);
+        lv_obj_t* btn = createButton(presetRow, _b, PRESET_BTN_W, PRESET_BTN_H, &style_btn_nav);
+        lv_obj_set_user_data(btn, (void*)(intptr_t)i);
+        lv_obj_add_event_cb(btn, presetSelectCb, LV_EVENT_CLICKED, NULL);
+    }
+
+    // Custom (manual +/− temperature) — always available
+    lv_obj_t* customBtn = createButton(presetRow, "Custom", PRESET_BTN_W, PRESET_BTN_H, &style_btn_nav);
+    lv_obj_set_user_data(customBtn, (void*)(intptr_t)(-1));
+    lv_obj_add_event_cb(customBtn, presetSelectCb, LV_EVENT_CLICKED, NULL);
+
+    // Add/manage presets
+    lv_obj_t* addBtn = createButton(presetRow, LV_SYMBOL_PLUS " Add", PRESET_BTN_W, PRESET_BTN_H, &style_btn_primary);
+    lv_obj_add_event_cb(addBtn, openPresetManagerCb, LV_EVENT_CLICKED, NULL);
+
+    highlightPresetButtons();
 }
 
-static void presetPusitCb(lv_event_t* e) {
-    (void)e;
-    selectedPreset = PRESET_PUSIT;
-    tempSetpoint = 50.0f;
-    dryerData.targetTemp = 50.0f;
-    { char _b[12]; snprintf(_b, sizeof(_b), "%.0f \xC2\xB0C", tempSetpoint); lv_label_set_text(tempSetLabel, _b); }
-    sendSetTemperature(50.0f);
-    
-    // Hide manual controls, show preset buttons highlighted
-    lv_obj_add_flag(manualTempRow, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_set_style_bg_color(tuyoBtn, COLOR_BG_BUTTON, 0);
-    lv_obj_set_style_bg_color(danggitBtn, COLOR_BG_BUTTON, 0);
-    lv_obj_set_style_bg_color(pusitBtn, COLOR_ACCENT, 0);
-    lv_obj_set_style_bg_color(othersBtn, COLOR_BG_BUTTON, 0);
+// Preset tap (user_data = index, or -1 for Custom)
+static void presetSelectCb(lv_event_t* e) {
+    int idx = (int)(intptr_t)lv_event_get_user_data(e);
+    selectedPresetIdx = idx;
+
+    if (lv_obj_is_valid(manualTempRow)) {
+        if (idx == -1) lv_obj_clear_flag(manualTempRow, LV_OBJ_FLAG_HIDDEN);
+        else           lv_obj_add_flag(manualTempRow, LV_OBJ_FLAG_HIDDEN);
+    }
+
+    if (idx >= 0 && idx < presetsGetCount()) {
+        const DryingPreset* p = presetsGet(idx);
+        tempSetpoint = p->tempC;
+        dryerData.targetTemp = p->tempC;
+        dryerData.targetWaterLoss = p->wlTarget;
+
+        if (lv_obj_is_valid(waterLossSlider))
+            lv_slider_set_value(waterLossSlider, (int)p->wlTarget, LV_ANIM_OFF);
+        if (lv_obj_is_valid(waterLossSliderLabel))
+            lv_label_set_text_fmt(waterLossSliderLabel, "%d %%", (int)p->wlTarget);
+
+        // Preset carries both values — send both so a fresh session uses them
+        sendSetTemperature(p->tempC);
+        sendSetWaterLoss(p->wlTarget);
+    }
+
+    if (lv_obj_is_valid(tempSetLabel)) {
+        char _b[16];
+        snprintf(_b, sizeof(_b), "%.0f \xC2\u00B0C", tempSetpoint);
+        lv_label_set_text(tempSetLabel, _b);
+    }
+
+    highlightPresetButtons();
 }
 
-static void presetOthersCb(lv_event_t* e) {
+// ── Preset manager modal (add + delete) ───────────────────────────────────────
+static lv_obj_t* presetModalOverlay = NULL;
+static lv_obj_t* presetModalList   = NULL;
+static lv_obj_t* presetModalStatus = NULL;
+static lv_obj_t* presetNameTa      = NULL;
+static lv_obj_t* presetTempLbl     = NULL;
+static lv_obj_t* presetWlLbl       = NULL;
+static float presetModalTemp = 60.0f;
+static float presetModalWl   = 70.0f;
+
+// Rebuild the saved-presets list inside the modal
+static void fillPresetModalList() {
+    if (!lv_obj_is_valid(presetModalList)) return;
+    lv_obj_clean(presetModalList);
+
+    int n = presetsGetCount();
+    if (n == 0) {
+        lv_obj_t* empty = lv_label_create(presetModalList);
+        lv_label_set_text(empty, "No presets yet — add one above.");
+        lv_obj_set_style_text_font(empty, FONT_NORMAL, 0);
+        lv_obj_set_style_text_color(empty, COLOR_TEXT_SECONDARY, 0);
+        lv_obj_set_width(empty, LV_PCT(100));
+        lv_obj_set_style_text_align(empty, LV_TEXT_ALIGN_CENTER, 0);
+        return;
+    }
+
+    for (int i = 0; i < n; i++) {
+        const DryingPreset* p = presetsGet(i);
+        lv_obj_t* row = lv_obj_create(presetModalList);
+        lv_obj_set_size(row, LV_PCT(100), 40);
+        lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
+        lv_obj_set_style_border_width(row, 0, 0);
+        lv_obj_set_style_border_side(row, LV_BORDER_SIDE_BOTTOM, 0);
+        lv_obj_set_style_border_width(row, 1, 0);
+        lv_obj_set_style_border_color(row, COLOR_BORDER, 0);
+        lv_obj_set_style_radius(row, 0, 0);
+        lv_obj_set_style_pad_all(row, 0, 0);
+        lv_obj_set_style_pad_hor(row, 4, 0);
+        lv_obj_set_scrollbar_mode(row, LV_SCROLLBAR_MODE_OFF);
+        lv_obj_set_flex_flow(row, LV_FLEX_FLOW_ROW);
+        lv_obj_set_flex_align(row, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+        lv_obj_set_style_pad_column(row, 8, 0);
+
+        lv_obj_t* lbl = lv_label_create(row);
+        lv_label_set_text_fmt(lbl, "%s  ·  %.0f \xC2\u00B0C  ·  %.0f%% wl", p->name, p->tempC, p->wlTarget);
+        lv_obj_set_style_text_font(lbl, FONT_NORMAL, 0);
+        lv_obj_set_style_text_color(lbl, COLOR_TEXT_PRIMARY, 0);
+        lv_obj_set_flex_grow(lbl, 1);
+
+        lv_obj_t* delBtn = createButton(row, LV_SYMBOL_TRASH, 44, 30, &style_btn_danger);
+        lv_obj_set_user_data(delBtn, (void*)(intptr_t)i);
+        lv_obj_add_event_cb(delBtn, presetDeleteCb, LV_EVENT_CLICKED, NULL);
+    }
+}
+
+// Refresh the preset row AND the modal list. Runs via lv_async_call so it never
+// deletes the widget that fired the event.
+static void refreshPresetUIAsync(void* arg) {
+    (void)arg;
+    rebuildPresetRow();
+    fillPresetModalList();
+}
+
+static void presetDeleteCb(lv_event_t* e) {
+    int idx = (int)(intptr_t)lv_event_get_user_data(e);
+    if (idx < 0 || idx >= presetsGetCount()) return;
+
+    presetsDelete(idx);
+    if (selectedPresetIdx == idx) selectedPresetIdx = -1;
+    else if (selectedPresetIdx > idx) selectedPresetIdx--;
+
+    if (lv_obj_is_valid(presetModalStatus)) lv_label_set_text(presetModalStatus, "Preset deleted.");
+    lv_async_call(refreshPresetUIAsync, NULL);
+}
+
+static void presetSaveCb(lv_event_t* e) {
     (void)e;
-    selectedPreset = PRESET_OTHERS;
-    
-    // Show manual controls for custom temperature
-    lv_obj_clear_flag(manualTempRow, LV_OBJ_FLAG_HIDDEN);
-    lv_obj_set_style_bg_color(tuyoBtn, COLOR_BG_BUTTON, 0);
-    lv_obj_set_style_bg_color(danggitBtn, COLOR_BG_BUTTON, 0);
-    lv_obj_set_style_bg_color(pusitBtn, COLOR_BG_BUTTON, 0);
-    lv_obj_set_style_bg_color(othersBtn, COLOR_ACCENT, 0);
+    if (presetsGetCount() >= PRESET_MAX_COUNT) {
+        if (lv_obj_is_valid(presetModalStatus)) lv_label_set_text(presetModalStatus, "Preset list is full (max 8).");
+        return;
+    }
+    const char* name = presetNameTa ? lv_textarea_get_text(presetNameTa) : "";
+    if (presetsAdd(name, presetModalTemp, presetModalWl)) {
+        const DryingPreset* p = presetsGet(presetsGetCount() - 1);
+        char _b[40];
+        snprintf(_b, sizeof(_b), "Saved: %s", p ? p->name : "preset");
+        if (lv_obj_is_valid(presetModalStatus)) lv_label_set_text(presetModalStatus, _b);
+        if (lv_obj_is_valid(presetNameTa)) lv_textarea_set_text(presetNameTa, "");
+        lv_async_call(refreshPresetUIAsync, NULL);
+    } else {
+        if (lv_obj_is_valid(presetModalStatus)) lv_label_set_text(presetModalStatus, "Could not save — check values.");
+    }
+}
+
+static void presetModalTempDecCb(lv_event_t* e) {
+    (void)e;
+    presetModalTemp -= 1.0f;
+    if (presetModalTemp < 30.0f) presetModalTemp = 30.0f;
+    if (lv_obj_is_valid(presetTempLbl)) { char _b[12]; snprintf(_b, sizeof(_b), "%.0f \xC2\u00B0C", presetModalTemp); lv_label_set_text(presetTempLbl, _b); }
+}
+
+static void presetModalTempIncCb(lv_event_t* e) {
+    (void)e;
+    presetModalTemp += 1.0f;
+    if (presetModalTemp > 100.0f) presetModalTemp = 100.0f;
+    if (lv_obj_is_valid(presetTempLbl)) { char _b[12]; snprintf(_b, sizeof(_b), "%.0f \xC2\u00B0C", presetModalTemp); lv_label_set_text(presetTempLbl, _b); }
+}
+
+static void presetModalWlDecCb(lv_event_t* e) {
+    (void)e;
+    presetModalWl -= 1.0f;
+    if (presetModalWl < 10.0f) presetModalWl = 10.0f;
+    if (lv_obj_is_valid(presetWlLbl)) { char _b[12]; snprintf(_b, sizeof(_b), "%.0f %%", presetModalWl); lv_label_set_text(presetWlLbl, _b); }
+}
+
+static void presetModalWlIncCb(lv_event_t* e) {
+    (void)e;
+    presetModalWl += 1.0f;
+    if (presetModalWl > 95.0f) presetModalWl = 95.0f;
+    if (lv_obj_is_valid(presetWlLbl)) { char _b[12]; snprintf(_b, sizeof(_b), "%.0f %%", presetModalWl); lv_label_set_text(presetWlLbl, _b); }
+}
+
+static void closePresetModalCb(lv_event_t* e) {
+    (void)e;
+    if (presetModalOverlay) { lv_obj_del(presetModalOverlay); presetModalOverlay = NULL; }
+    presetModalList   = NULL;
+    presetModalStatus = NULL;
+    presetNameTa      = NULL;
+    presetTempLbl     = NULL;
+    presetWlLbl       = NULL;
+}
+
+static void openPresetManagerCb(lv_event_t* e) {
+    (void)e;
+    if (presetModalOverlay) return;   // already open
+
+    // Prefill from the currently selected preset, else defaults
+    if (selectedPresetIdx >= 0 && selectedPresetIdx < presetsGetCount()) {
+        const DryingPreset* p = presetsGet(selectedPresetIdx);
+        presetModalTemp = p->tempC;
+        presetModalWl   = p->wlTarget;
+    } else {
+        presetModalTemp = 60.0f;
+        presetModalWl   = 70.0f;
+    }
+
+    lv_obj_t* overlay = lv_obj_create(lv_layer_top());
+    lv_obj_set_size(overlay, SCREEN_WIDTH, SCREEN_HEIGHT);
+    lv_obj_set_style_bg_color(overlay, lv_color_black(), 0);
+    lv_obj_set_style_bg_opa(overlay, LV_OPA_60, 0);
+    lv_obj_set_style_border_width(overlay, 0, 0);
+    lv_obj_set_style_radius(overlay, 0, 0);
+    lv_obj_set_scrollbar_mode(overlay, LV_SCROLLBAR_MODE_OFF);
+    presetModalOverlay = overlay;
+
+    lv_obj_t* box = lv_obj_create(overlay);
+    lv_obj_set_size(box, 460, 440);
+    lv_obj_align(box, LV_ALIGN_TOP_MID, 0, 8);
+    lv_obj_set_style_bg_color(box, COLOR_BG_CARD, 0);
+    lv_obj_set_style_bg_opa(box, LV_OPA_COVER, 0);
+    lv_obj_set_style_radius(box, 16, 0);
+    lv_obj_set_style_border_width(box, 2, 0);
+    lv_obj_set_style_border_color(box, COLOR_ACCENT, 0);
+    lv_obj_set_style_pad_all(box, 14, 0);
+    lv_obj_set_style_pad_row(box, 6, 0);
+    lv_obj_set_scrollbar_mode(box, LV_SCROLLBAR_MODE_AUTO);
+    lv_obj_set_scroll_dir(box, LV_DIR_VER);
+    lv_obj_set_flex_flow(box, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(box, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+
+    // Title
+    lv_obj_t* title = lv_label_create(box);
+    lv_label_set_text(title, LV_SYMBOL_SETTINGS "  PRESET MANAGER");
+    lv_obj_set_style_text_font(title, FONT_LARGE, 0);
+    lv_obj_set_style_text_color(title, COLOR_ACCENT, 0);
+
+    // ── New preset form ──
+    lv_obj_t* formTitle = lv_label_create(box);
+    lv_label_set_text(formTitle, "NEW PRESET");
+    lv_obj_set_style_text_font(formTitle, FONT_MEDIUM, 0);
+    lv_obj_set_style_text_color(formTitle, COLOR_TEXT_PRIMARY, 0);
+
+    presetNameTa = lv_textarea_create(box);
+    lv_textarea_set_one_line(presetNameTa, true);
+    lv_textarea_set_max_length(presetNameTa, PRESET_NAME_MAX_LEN - 1);
+    lv_textarea_set_placeholder_text(presetNameTa, "Product name (e.g. Anchovy)");
+    lv_obj_set_size(presetNameTa, LV_PCT(100), 40);
+    lv_obj_set_style_text_font(presetNameTa, FONT_NORMAL, 0);
+    lv_obj_set_style_text_color(presetNameTa, COLOR_TEXT_PRIMARY, 0);
+    lv_obj_set_style_bg_color(presetNameTa, COLOR_BG_BUTTON, 0);
+    lv_obj_set_style_border_color(presetNameTa, COLOR_BORDER, 0);
+    lv_obj_set_style_radius(presetNameTa, 6, 0);
+
+    // Temperature row
+    lv_obj_t* tempRow = lv_obj_create(box);
+    lv_obj_set_size(tempRow, LV_PCT(100), 38);
+    lv_obj_set_style_bg_opa(tempRow, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(tempRow, 0, 0);
+    lv_obj_set_style_pad_all(tempRow, 0, 0);
+    lv_obj_set_scrollbar_mode(tempRow, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_flex_flow(tempRow, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(tempRow, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(tempRow, 10, 0);
+
+    lv_obj_t* tDec = createButton(tempRow, "-", 44, 34, &style_btn_nav);
+    lv_obj_add_event_cb(tDec, presetModalTempDecCb, LV_EVENT_CLICKED, NULL);
+    presetTempLbl = lv_label_create(tempRow);
+    lv_label_set_text_fmt(presetTempLbl, "%.0f \xC2\u00B0C", presetModalTemp);
+    lv_obj_set_style_text_font(presetTempLbl, FONT_MEDIUM, 0);
+    lv_obj_set_style_text_color(presetTempLbl, COLOR_TEXT_PRIMARY, 0);
+    lv_obj_set_flex_grow(presetTempLbl, 1);
+    lv_obj_set_style_text_align(presetTempLbl, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_t* tInc = createButton(tempRow, "+", 44, 34, &style_btn_nav);
+    lv_obj_add_event_cb(tInc, presetModalTempIncCb, LV_EVENT_CLICKED, NULL);
+
+    // Water-loss target row
+    lv_obj_t* wlRow = lv_obj_create(box);
+    lv_obj_set_size(wlRow, LV_PCT(100), 38);
+    lv_obj_set_style_bg_opa(wlRow, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(wlRow, 0, 0);
+    lv_obj_set_style_pad_all(wlRow, 0, 0);
+    lv_obj_set_scrollbar_mode(wlRow, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_flex_flow(wlRow, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(wlRow, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(wlRow, 10, 0);
+
+    lv_obj_t* wDec = createButton(wlRow, "-", 44, 34, &style_btn_nav);
+    lv_obj_add_event_cb(wDec, presetModalWlDecCb, LV_EVENT_CLICKED, NULL);
+    presetWlLbl = lv_label_create(wlRow);
+    lv_label_set_text_fmt(presetWlLbl, "%.0f %%", presetModalWl);
+    lv_obj_set_style_text_font(presetWlLbl, FONT_MEDIUM, 0);
+    lv_obj_set_style_text_color(presetWlLbl, COLOR_TEXT_PRIMARY, 0);
+    lv_obj_set_flex_grow(presetWlLbl, 1);
+    lv_obj_set_style_text_align(presetWlLbl, LV_TEXT_ALIGN_CENTER, 0);
+    lv_obj_t* wInc = createButton(wlRow, "+", 44, 34, &style_btn_nav);
+    lv_obj_add_event_cb(wInc, presetModalWlIncCb, LV_EVENT_CLICKED, NULL);
+
+    // Save
+    lv_obj_t* saveBtn = createButton(box, LV_SYMBOL_OK "  SAVE PRESET", LV_PCT(100), 40, &style_btn_success);
+    lv_obj_add_event_cb(saveBtn, presetSaveCb, LV_EVENT_CLICKED, NULL);
+
+    // ── Saved presets list ──
+    lv_obj_t* listTitle = lv_label_create(box);
+    lv_label_set_text(listTitle, "SAVED PRESETS");
+    lv_obj_set_style_text_font(listTitle, FONT_MEDIUM, 0);
+    lv_obj_set_style_text_color(listTitle, COLOR_TEXT_PRIMARY, 0);
+
+    presetModalList = lv_obj_create(box);
+    lv_obj_set_size(presetModalList, LV_PCT(100), 190);
+    lv_obj_set_style_bg_opa(presetModalList, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(presetModalList, 1, 0);
+    lv_obj_set_style_border_color(presetModalList, COLOR_BORDER, 0);
+    lv_obj_set_style_radius(presetModalList, 6, 0);
+    lv_obj_set_style_pad_all(presetModalList, 6, 0);
+    lv_obj_set_style_pad_row(presetModalList, 4, 0);
+    lv_obj_set_scrollbar_mode(presetModalList, LV_SCROLLBAR_MODE_AUTO);
+    lv_obj_set_scroll_dir(presetModalList, LV_DIR_VER);
+    lv_obj_set_flex_flow(presetModalList, LV_FLEX_FLOW_COLUMN);
+    fillPresetModalList();   // safe: only deletes children of the modal list
+
+    // Status line
+    presetModalStatus = lv_label_create(box);
+    lv_label_set_text(presetModalStatus, "");
+    lv_obj_set_style_text_font(presetModalStatus, FONT_SMALL, 0);
+    lv_obj_set_style_text_color(presetModalStatus, COLOR_TEXT_SECONDARY, 0);
+    lv_obj_set_width(presetModalStatus, LV_PCT(100));
+
+    // Close
+    lv_obj_t* closeBtn = createButton(box, LV_SYMBOL_CLOSE "  CLOSE", LV_PCT(100), 40, &style_btn_danger);
+    lv_obj_add_event_cb(closeBtn, closePresetModalCb, LV_EVENT_CLICKED, NULL);
+
+    // Keyboard bound to the name field (shows on focus, hides on outside tap)
+    lv_obj_t* kb = lv_keyboard_create(overlay);
+    lv_keyboard_set_textarea(kb, presetNameTa);
+    lv_obj_align(kb, LV_ALIGN_BOTTOM_MID, 0, 0);
 }
 
 // Temperature +/- callbacks (only for OTHERS preset)
 static void tempPlusCb(lv_event_t* e) {
     (void)e;
-    if (selectedPreset != PRESET_OTHERS) return;
+    if (selectedPresetIdx != -1) return;
     tempSetpoint += 1.0f;
     if (tempSetpoint > 100.0f) tempSetpoint = 100.0f;
-    { char _b[12]; snprintf(_b, sizeof(_b), "%.0f \xC2\xB0C", tempSetpoint); lv_label_set_text(tempSetLabel, _b); }
+    { char _b[12]; snprintf(_b, sizeof(_b), "%.0f \xC2\u00B0C", tempSetpoint); lv_label_set_text(tempSetLabel, _b); }
     dryerData.targetTemp = tempSetpoint;
     sendSetTemperature(tempSetpoint);
 }
 
 static void tempMinusCb(lv_event_t* e) {
     (void)e;
-    if (selectedPreset != PRESET_OTHERS) return;
+    if (selectedPresetIdx != -1) return;
     tempSetpoint -= 1.0f;
     if (tempSetpoint < 30.0f) tempSetpoint = 30.0f;
-    { char _b[12]; snprintf(_b, sizeof(_b), "%.0f \xC2\xB0C", tempSetpoint); lv_label_set_text(tempSetLabel, _b); }
+    { char _b[12]; snprintf(_b, sizeof(_b), "%.0f \xC2\u00B0C", tempSetpoint); lv_label_set_text(tempSetLabel, _b); }
     dryerData.targetTemp = tempSetpoint;
     sendSetTemperature(tempSetpoint);
 }
@@ -164,20 +468,20 @@ static void tempMinusCb(lv_event_t* e) {
 // +5 / -5 for faster adjustment (only for OTHERS preset)
 static void tempPlus5Cb(lv_event_t* e) {
     (void)e;
-    if (selectedPreset != PRESET_OTHERS) return;
+    if (selectedPresetIdx != -1) return;
     tempSetpoint += 5.0f;
     if (tempSetpoint > 100.0f) tempSetpoint = 100.0f;
-    { char _b[12]; snprintf(_b, sizeof(_b), "%.0f \xC2\xB0C", tempSetpoint); lv_label_set_text(tempSetLabel, _b); }
+    { char _b[12]; snprintf(_b, sizeof(_b), "%.0f \xC2\u00B0C", tempSetpoint); lv_label_set_text(tempSetLabel, _b); }
     dryerData.targetTemp = tempSetpoint;
     sendSetTemperature(tempSetpoint);
 }
 
 static void tempMinus5Cb(lv_event_t* e) {
     (void)e;
-    if (selectedPreset != PRESET_OTHERS) return;
+    if (selectedPresetIdx != -1) return;
     tempSetpoint -= 5.0f;
     if (tempSetpoint < 30.0f) tempSetpoint = 30.0f;
-    { char _b[12]; snprintf(_b, sizeof(_b), "%.0f \xC2\xB0C", tempSetpoint); lv_label_set_text(tempSetLabel, _b); }
+    { char _b[12]; snprintf(_b, sizeof(_b), "%.0f \xC2\u00B0C", tempSetpoint); lv_label_set_text(tempSetLabel, _b); }
     dryerData.targetTemp = tempSetpoint;
     sendSetTemperature(tempSetpoint);
 }
@@ -358,28 +662,20 @@ lv_obj_t* createControlScreen() {
     lv_label_set_text(tempTitle, "Drying Preset");
     lv_obj_add_style(tempTitle, &style_text_label, 0);
 
-    // Preset selection buttons (row 1)
-    lv_obj_t* presetRow1 = lv_obj_create(leftCol);
-    lv_obj_set_size(presetRow1, LV_PCT(100), 55);
-    lv_obj_set_style_bg_opa(presetRow1, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(presetRow1, 0, 0);
-    lv_obj_set_style_pad_all(presetRow1, 0, 0);
-    lv_obj_set_scrollbar_mode(presetRow1, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_flex_flow(presetRow1, LV_FLEX_FLOW_ROW);
-    lv_obj_set_flex_align(presetRow1, LV_FLEX_ALIGN_SPACE_AROUND, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
-    lv_obj_set_style_pad_column(presetRow1, 4, 0);
+    // Preset selection row (scrollable — rebuilt from saved presets)
+    presetRow = lv_obj_create(leftCol);
+    lv_obj_set_size(presetRow, LV_PCT(100), 58);
+    lv_obj_set_style_bg_opa(presetRow, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(presetRow, 0, 0);
+    lv_obj_set_style_pad_all(presetRow, 0, 0);
+    lv_obj_set_style_pad_right(presetRow, 8, 0);
+    lv_obj_set_scrollbar_mode(presetRow, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_scroll_dir(presetRow, LV_DIR_HOR);
+    lv_obj_set_flex_flow(presetRow, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(presetRow, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_column(presetRow, 4, 0);
 
-    tuyoBtn = createButton(presetRow1, "Tuyo\n60°C", 80, 50, &style_btn_nav);
-    lv_obj_add_event_cb(tuyoBtn, presetTuyoCb, LV_EVENT_CLICKED, NULL);
-
-    danggitBtn = createButton(presetRow1, "Danggit\n60°C", 80, 50, &style_btn_nav);
-    lv_obj_add_event_cb(danggitBtn, presetDanggitCb, LV_EVENT_CLICKED, NULL);
-
-    pusitBtn = createButton(presetRow1, "Pusit\n50°C", 80, 50, &style_btn_nav);
-    lv_obj_add_event_cb(pusitBtn, presetPusitCb, LV_EVENT_CLICKED, NULL);
-
-    othersBtn = createButton(presetRow1, "Others\nCustom", 80, 50, &style_btn_nav);
-    lv_obj_add_event_cb(othersBtn, presetOthersCb, LV_EVENT_CLICKED, NULL);
+    rebuildPresetRow();   // fills the row from saved presets (+ Custom, + Add)
 
     // Current temp display
     lv_obj_t* tempDisplay = lv_obj_create(leftCol);
@@ -399,7 +695,7 @@ lv_obj_t* createControlScreen() {
     lv_obj_set_style_text_color(setLabel, COLOR_TEXT_SECONDARY, 0);
 
     tempSetLabel = lv_label_create(tempDisplay);
-    { char _b[12]; snprintf(_b, sizeof(_b), "%.0f \xC2\xB0C", tempSetpoint); lv_label_set_text(tempSetLabel, _b); }
+    { char _b[12]; snprintf(_b, sizeof(_b), "%.0f \xC2\u00B0C", tempSetpoint); lv_label_set_text(tempSetLabel, _b); }
     lv_obj_set_style_text_font(tempSetLabel, FONT_XL, 0);
     lv_obj_set_style_text_color(tempSetLabel, COLOR_ACCENT, 0);
 
@@ -429,7 +725,7 @@ lv_obj_t* createControlScreen() {
 
     // Current temperature display
     currentTempLabel = lv_label_create(leftCol);
-    { char _b[24]; snprintf(_b, sizeof(_b), "Current: %.1f \xC2\xB0C", dryerData.temperature); lv_label_set_text(currentTempLabel, _b); }
+    { char _b[24]; snprintf(_b, sizeof(_b), "Current: %.1f \xC2\u00B0C", dryerData.temperature); lv_label_set_text(currentTempLabel, _b); }
     lv_obj_set_style_text_font(currentTempLabel, FONT_NORMAL, 0);
     lv_obj_set_style_text_color(currentTempLabel, COLOR_TEXT_SECONDARY, 0);
 
@@ -559,11 +855,11 @@ void updateControlScreen() {
     tempSetpoint = dryerData.targetTemp;
     
     if (lv_obj_is_valid(tempSetLabel)) {
-        { char _b[12]; snprintf(_b, sizeof(_b), "%.0f \xC2\xB0C", tempSetpoint); lv_label_set_text(tempSetLabel, _b); }
+        { char _b[12]; snprintf(_b, sizeof(_b), "%.0f \xC2\u00B0C", tempSetpoint); lv_label_set_text(tempSetLabel, _b); }
     }
     
     if (lv_obj_is_valid(currentTempLabel)) {
-        { char _b[24]; snprintf(_b, sizeof(_b), "Current: %.1f \xC2\xB0C", dryerData.temperature); lv_label_set_text(currentTempLabel, _b); }
+        { char _b[24]; snprintf(_b, sizeof(_b), "Current: %.1f \xC2\u00B0C", dryerData.temperature); lv_label_set_text(currentTempLabel, _b); }
     }
 
     // Use optimistic UI briefly after local START/STOP actions.

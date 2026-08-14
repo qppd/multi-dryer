@@ -80,7 +80,7 @@ static const Instruction INSTRUCTIONS[] = {
         "Drying Complete",
         "The machine will automatically stop when the target water loss is\n"
         "reached. A COMPLETE status will be shown on the dashboard. The\n"
-        "history screen will log this session's results automatically."
+        "analytics screen charts temperature, humidity, and weight live."
     },
     {
         "09",
