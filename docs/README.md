@@ -36,8 +36,8 @@ Docs that should exist before / during hardware bring-up, in priority order:
 | 5 | **HMI user guide** | What each screen does, button semantics (start/pause/resume/stop, presets, manual mode) | ✅ [`guides/hmi-user-guide.md`](guides/hmi-user-guide.md) |
 | 6 | **Troubleshooting guide** | MAC pairing, no-status-packet, sensor-fail vent behavior, NVS session resurrection | ✅ [`guides/troubleshooting.md`](guides/troubleshooting.md) |
 | 7 | **Safety & thermal design** | SSR strategy, fuses, thermal cutoff, SHT31 vent guard, live-wiring rules | ✅ [`guides/safety-and-thermal.md`](guides/safety-and-thermal.md) |
-| 8 | **BOM / procurement** | Parts list with specs & quantities for ordering | 📋 planned (draft in wiring plan §6) |
-| 9 | **Test plan** | Unit/bench tests for the state machine & protocol helpers, HMI screen checks | 📋 planned |
+| 8 | **BOM / procurement** | Parts list with specs & quantities for ordering | ✅ [`guides/bom.md`](guides/bom.md) |
+| 9 | **Test plan** | Unit/bench tests for the state machine & protocol helpers, HMI screen checks | ✅ [`guides/test-plan.md`](guides/test-plan.md) |
 
 ## Conventions
 

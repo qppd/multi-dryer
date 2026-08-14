@@ -48,6 +48,8 @@ multi-dryer/
     ├── guides/bring-up-checklist.md   # ordered boot/hardware verification
     ├── guides/calibration-guide.md    # TARE + CALIBRATE:<kg>, NVS persistence
     ├── guides/troubleshooting.md      # pairing, vent guard, NVS issues
+    ├── guides/bom.md                  # parts list with specs & quantities
+    ├── guides/test-plan.md            # unit tests + HMI screen checks
     ├── schematic/hardware-wiring.md   # written pin-by-pin wiring plan
     ├── schematic/wiring-diagram.md    # interactive wiring diagram link (Cirkit Designer)
     └── diagrams/                      # block diagram + flow charts (Mermaid)
@@ -63,6 +65,8 @@ multi-dryer/
 - [Bring-up checklist](docs/guides/bring-up-checklist.md) — ordered boot/hardware verification
 - [Calibration guide](docs/guides/calibration-guide.md) — TARE + CALIBRATE:<kg> procedure, NVS persistence
 - [Troubleshooting guide](docs/guides/troubleshooting.md) — pairing, no-status-packet, sensor-fail vent behavior
+- [BOM / procurement](docs/guides/bom.md) — full parts list with specs, quantities, and sourcing notes
+- [Test plan](docs/guides/test-plan.md) — unit tests for protocol/state machine + HMI screen checks
 - [System architecture](docs/system-architecture.md) — modules, data flow, design decisions
 - [Block diagram](docs/diagrams/block-diagram.md) / [Flow charts](docs/diagrams/flow-chart.md) — Mermaid diagrams
 - [Safety & thermal design](docs/guides/safety-and-thermal.md) — SSR strategy, fuses, thermal cutoff, vent guard
