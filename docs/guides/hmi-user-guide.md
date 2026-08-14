@@ -177,10 +177,10 @@ unload/store → clean & maintain.
 
 ## 10. Notes & Known Gaps
 
-- **Manual heater/fan/exhaust control:** the protocol and HMI senders exist
-  (`sendHeaterControl` / `sendFanControl` / `sendExhaustControl`) and the
-  controller handles them — but **no screen button is wired yet**. Expect these
-  on a future manual-mode screen. Any such command ends an active session first.
+- **Manual heater/fan/exhaust control:** available on the Control screen —
+  switching to **Manual mode** reveals Heater / Inlet Fan / Exhaust switches
+  (`sendHeaterControl` / `sendFanControl` / `sendExhaustControl`). Any manual
+  command ends an active session first, so manual and automatic control never fight.
 - **History** resets on HMI reboot (analytics buffer is RAM-only).
 - **Elapsed/EDT** come from the controller — if the HMI reboots mid-session, the
   numbers are correct again within 1 s (no local clock guessing).

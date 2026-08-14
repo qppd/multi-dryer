@@ -38,6 +38,6 @@ void sendStatusRequest();
 void sendSetWaterLoss(float pct);
 void sendTareScale();
 void sendCalibrateScale(float knownKg);
-void sendSensorTest();   // triggers SHT31 + load-cell read on Nano
+void sendSensorTest();   // triggers SHT31 + load-cell read on the controller
 
 #endif // SERIAL_PROTOCOL_H

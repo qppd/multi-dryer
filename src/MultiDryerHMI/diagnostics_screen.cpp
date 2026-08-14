@@ -66,7 +66,7 @@ static void calibrateCb(lv_event_t* e) {
     (void)e;
     sendCalibrateScale(calibKg);
     if (calibStatusLbl)
-        lv_label_set_text(calibStatusLbl, "Calibrated! Factor saved to EEPROM on controller.");
+        lv_label_set_text(calibStatusLbl, "Calibrated! Factor saved to NVS on controller.");
 }
 
 static void openCalibrationModal(void) {
