@@ -15,7 +15,7 @@ and tooling.
 | Weight | **HX711** 24-bit ADC + 4-wire load cell (1–50 kg) | Product weight → water-loss % |
 | Heating | **PTC heater** (500–2000 W typical) | Drying heat, switched by SSR1 |
 | Airflow | Inlet fan + exhaust fan (220 V AC) + exhaust outlet | Circulation & moisture venting, SSRs 2–4 |
-| Power switching | **4× SSR** (3–32 VDC input / 220 VAC output) | Opto-isolated mains switching; 10 kΩ pull-downs = fail-safe OFF at boot |
+| Power switching | **4× SSR** (3–32 VDC input / 220 VAC output) | Opto-isolated mains switching; firmware-enforced fail-safe OFF at boot |
 | Power | 5 V isolated PSU ≥ 3 A (e.g. Hi-Link HLK-PM03) | Low-voltage rail (ESP32's onboard regulator makes 3.3 V) |
 | Protection | Fuses per AC branch + thermal cutoff on heater branch | Safety |
 
@@ -93,6 +93,6 @@ Pin allocation: `src/MultiDryerController/PINS_CONFIG.h` · wiring plan:
 
 1. **Boot-safe pins** — no strapping (0/2/4/5/12/15), flash (6–11), or boot-PWM (14) pins.
 2. **WiFi-safe pins** — no analog reads on ADC2 (unusable with WiFi active); HX711 path is fully digital.
-3. **Fail-safe outputs** — 10 kΩ pull-downs + firmware forces pins LOW first thing in `setup()`.
+3. **Fail-safe outputs** — firmware forces all SSR pins LOW first thing in `setup()`.
 4. **Sensor-fail safety** — SHT31 loss forces the heater OFF and vents instead.
 5. **Single transport** — ESP-NOW only between boards; UART0 is local debug only.

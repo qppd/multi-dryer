@@ -17,7 +17,7 @@ runaway, or mains exposure).
 |---|---|---|
 | 1. Mechanical | Thermal cutoff (fuse/limit switch) in series with the heater branch | Stuck-on SSR, fan failure, firmware crash |
 | 2. Electrical | Fuse per AC branch; opto-isolated SSRs | Overcurrent, short circuit, mains-to-logic faults |
-| 3. Boot-time | 10 kΩ pull-downs + firmware forces SSR pins LOW first | SSR energizing during the boot window |
+| 3. Boot-time | Firmware forces every SSR pin LOW as the first step of `setup()` | SSR energizing during the boot window |
 | 4. Firmware | **SHT31 vent guard**, PID output limits, TARE gate, manual/auto arbitration | Dead sensor → full-power heating; conflicting control |
 | 5. User | Enclosure isolation, wiring separation, clear labeling | Electric shock, fire |
 
@@ -48,32 +48,25 @@ AC-L ──┬─[F1 10A]──[Thermal cutoff]── SSR1 (load) ── PTC Hea
 | SSR input | 3–32 VDC (Fotek/Omron style) → driven directly by 3.3 V logic (5–10 mA) |
 | SSR output | 220 VAC, **derated** — 25 A SSR for the heater, 10 A for fans |
 | Isolation | Opto-isolated AC side — the mains never touches the ESP32 electrically |
-| Pull-down | 10 kΩ on every SSR input → guaranteed OFF during the high-Z boot window |
-| Series resistor | 220 Ω (only if the SSR input is a bare LED; many SSRs have one built in) |
+| Fail-safe | Firmware forces every SSR input LOW at the top of `setup()` — outputs stay OFF until explicitly enabled |
 | Thermal | Heat sinks on all SSRs; AC wiring separated from signal wiring |
-| Snubber | 100 Ω / 0.1 µF (250 VAC) across fan loads if motor noise causes false switching |
 
 Drive circuit per output:
 
 ```
-ESP32 GPIO ──[220 Ω]──┬── SSR input (+)     SSR input (−) ── GND
-                      │
-                    [10 kΩ]     (pull-down to GND = fail-safe OFF)
-                      │
-                     GND
+ESP32 GPIO ── SSR input (+)      SSR input (−) ── GND
 ```
 
-> **5–32 VDC-input SSRs** that won't trigger at 3.3 V need a transistor driver:
-> `GPIO ──[1 kΩ]── Base(2N2222/BC547)`, Emitter→GND, Collector→SSR(+), SSR(−)→GND,
-> 10 kΩ pull-down on the base.
+> **3.3 V-logic SSR inputs are required** — the ESP32 drives SSR(+) directly
+> (3–32 VDC input types). If a module needs a higher drive level, use a
+> 3.3 V-logic-compatible SSR rather than adding external driver circuitry.
 
 ---
 
 ## 4. Boot-Time Safety
 
-1. External 10 kΩ pull-downs hold every SSR input LOW while GPIOs float (high-Z) for the ~1 s boot window.
-2. Firmware sets all four SSR pins `pinMode(OUTPUT); digitalWrite(LOW);` **as the first thing in `setup()`** — belt-and-suspenders.
-3. Pin selection avoids boot hazards: no strapping pins (0/2/4/5/12/15), no GPIO 14 (PWM burst at boot), no flash/UART0 pins — so an SSR can never be driven HIGH by default reset behavior.
+1. Firmware sets all four SSR pins `pinMode(OUTPUT); digitalWrite(LOW);` **as the first thing in `setup()`**, before WiFi/ESP-NOW init — no SSR can energize until the firmware explicitly enables it.
+2. Pin selection avoids boot hazards: no strapping pins (0/2/4/5/12/15), no GPIO 14 (PWM burst at boot), no flash/UART0 pins — so an SSR can never be driven HIGH by default reset behavior.
 
 ---
 
@@ -141,7 +134,7 @@ must clear. See `bring-up-checklist.md` §4.5.
 | SSR1 sticks ON | Heater runs uncontrolled → fire | Thermal cutoff opens heater branch | Heater circuit physically cleared |
 | Inlet fan fails (heater on) | Overheat, no airflow | Thermal cutoff + PID sees rising temp → output 0 → vent | Venting, heater off |
 | SHT31 dies mid-cycle | PID heats blind at full power | Vent guard (heater OFF, vent ON) | Safe, vents; HMI shows SHT31 flag clear |
-| Controller crashes/resets | SSRs hold last state (bad) | Pull-downs OFF at boot + firmware re-inits MANUAL | All outputs OFF at reset |
+| Controller crashes/resets | SSRs hold last state (bad) | Firmware forces pins LOW at boot + re-inits MANUAL | All outputs OFF at reset |
 | WiFi/ESP-NOW loss | Control link lost | Controller runs autonomously (state machine keeps safety rules) | Drying continues safely; HMI stale |
 | Command burst floods controller | Dropped/lost commands | 8-slot ring buffer | No loss |
 | Brown-out | Random SSR state | PSU ≥ 3 A + bulk capacitance; watchdog resets to safe boot | OFF at boot |

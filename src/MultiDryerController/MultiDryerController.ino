@@ -62,9 +62,9 @@ void setup() {
   Serial.begin(115200);
   delay(200);
 
-  // Fail-safe: force all SSR outputs OFF before anything else.
-  // (10kΩ pull-downs on the PCB already guarantee OFF during the boot window;
-  //  this keeps them OFF once firmware runs.)
+  // Fail-safe: force all SSR outputs OFF before anything else — SSR inputs
+  // float (high-Z) during the ~1 s boot window, so pins are driven LOW as
+  // the first step of setup(), before WiFi/ESP-NOW init.
   pinMode(SSR1_PIN, OUTPUT); digitalWrite(SSR1_PIN, LOW);
   pinMode(SSR2_PIN, OUTPUT); digitalWrite(SSR2_PIN, LOW);
   pinMode(SSR3_PIN, OUTPUT); digitalWrite(SSR3_PIN, LOW);

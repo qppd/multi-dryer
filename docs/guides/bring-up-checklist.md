@@ -12,7 +12,7 @@ each phase depends on the previous one. Tick boxes as you pass each check.
 ## Phase 0 — Pre-Flight (bench, unpowered)
 
 - [ ] **0.1** Visual check: no solder bridges, shorts, or cold joints on SSR inputs, HX711, SHT31.
-- [ ] **0.2** Continuity: each GPIO → SSR input goes through the 10 kΩ pull-down to GND.
+- [ ] **0.2** Continuity: each GPIO → SSR input is wired directly, with no short to GND or the AC side.
 - [ ] **0.3** Power rails separated: 220 VAC side never adjacent to signal wires (< 6 mm rule).
 - [ ] **0.4** Fuses fitted on every AC branch (10 A heater / 5 A outlet / 2 A fans).
 - [ ] **0.5** Thermal cutoff wired **in series with the PTC heater** branch.
@@ -32,7 +32,7 @@ each phase depends on the previous one. Tick boxes as you pass each check.
 - [ ] **1.1c** Boot banner appears in order: pins → SHT31 → load cell → PID → drying → ESP-NOW.
 
 ### 1.2 Fail-safe test
-- [ ] **1.2a** Right after power-on (before firmware enables outputs) measure each SSR input — must read **LOW** (pull-downs working).
+- [ ] **1.2a** After boot, measure each SSR input — must read **LOW** (firmware forces pins LOW at the top of `setup()`).
 - [ ] **1.2b** Heater and fans stay off during the ~1 s boot window (no SSR clicks).
 - [ ] **1.2c** Firmware forces SSR pins LOW first thing in `setup()` — verify no HIGH glitch on GPIO 26/25/27/13.
 
@@ -113,8 +113,8 @@ each phase depends on the previous one. Tick boxes as you pass each check.
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | Board stuck in download mode / won't boot | A strapping pin loaded down (0/2/4/5/12/15) | Check wiring on strapping pins; remove pull-ups |
-| SSR clicks at power-on | Missing pull-down / GPIO 14 used | Add 10 kΩ pull-down; never use GPIO 14 |
-| No SHT31 data | Wrong pins, missing pull-ups, wrong addr | Check SDA/SCL, add 4.7 kΩ pull-ups, try 0x45 |
+| SSR clicks at power-on | GPIO 14 used as an output (PWM burst at boot) | Move to a clean GPIO; never use GPIO 14 |
+| No SHT31 data | Wrong pins, wrong addr | Check SDA/SCL, try address 0x45 |
 | Weight reads garbage / floats | HX711 offset drift or floating DOUT | `TARE`; ensure HX711 powered; check DOUT/SCK |
 | No status packets on HMI | Peer MACs not set / channel mismatch | Complete §2.4; both on channel 1 |
 | Heater never on | Setpoint 0 / SHT31 lost (vent guard) | Send `SET_TEMPERATURE`; check sensor |

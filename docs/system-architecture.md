@@ -66,8 +66,8 @@ espnow_link ◄── status packet (1 Hz) ───┘   commands ──► sta
 
 ### 2.2 Safety architecture
 
-1. **Boot fail-safe** — 10 kΩ pull-downs + firmware forces SSR pins LOW first
-   thing in `setup()`: nothing energizes during boot.
+1. **Boot fail-safe** — firmware forces all SSR pins LOW as the first step
+   of `setup()`: nothing energizes during boot.
 2. **Sensor-fail vent guard** — if `sht31OK` is false, `pidCOMPUTE()` forces
    heater + inlet fan OFF and vents (exhaust open + fan on): a dead sensor can
    never cause full-power heating.

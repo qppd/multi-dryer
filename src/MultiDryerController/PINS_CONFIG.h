@@ -6,7 +6,7 @@
 // Boot/WiFi safety rules applied here:
 //   - No strapping pins (0, 2, 4, 5, 12, 15) — flashing/boot always works.
 //   - No flash pins (6-11), no UART0 (1/3), no GPIO 14 (PWM burst at boot).
-//   - All outputs have 10kΩ pull-downs on the PCB → fail-safe OFF at boot.
+//   - All outputs are forced LOW at the top of setup() → fail-safe OFF at boot.
 //   - No analog reads on ADC2 pins (unusable while WiFi/ESP-NOW is active);
 //     analog-capable pins are used as digital outputs only.
 

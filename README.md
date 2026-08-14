@@ -16,7 +16,7 @@ Smart food dehydration system built on a pair of ESP32 boards: a **controller** 
 - **Session persistence (NVS)** — interrupted drying sessions survive reboot/power-cycle: initial weight + HX711 zero reference, elapsed runtime, and targets are restored automatically (DRYING re-enables the PID). The last setpoint and water-loss target persist even when idle.
 - **Full HMI control** — LVGL v8 touchscreen UI: dashboard, control, manual operation, analytics, diagnostics screens + completion alerts. Start / stop / pause / resume, **user-managed drying presets** (name + temperature + water-loss target, add/delete, saved in HMI NVS), live weight, water loss, runtime and EDT.
 - **Manual overrides** — heater / inlet fan / exhaust toggles; any manual command ends an active session first so manual and automatic control never fight.
-- **Boot- and WiFi-safe pin map** — no strapping, flash, or ADC2 pins used; fail-safe SSR pull-downs (all outputs OFF at power-on).
+- **Boot- and WiFi-safe pin map** — no strapping, flash, or ADC2 pins used; all SSR outputs forced OFF at power-on (fail-safe).
 
 ## Repository Structure
 
@@ -76,7 +76,7 @@ multi-dryer/
 | ESP32 38-pin DevKitC (WROOM-32) | Main controller |
 | ESP32-S3 + 7″ touch display (Waveshare Touch-LCD-7) | HMI (LVGL UI) |
 | PTC heater + 220 V fans ×2, exhaust outlet | Drying loads, switched by SSRs |
-| SSR modules ×4 (3–32 VDC input) | AC load switching, fail-safe pull-downs |
+| SSR modules ×4 (3–32 VDC input) | AC load switching (firmware-enforced fail-safe) |
 | HX711 + load cell (1–50 kg) | Weight / water-loss measurement |
 | SHT31 | Temperature & humidity (PID feedback) |
 | 5 V isolated PSU (≥3 A) | Low-voltage supply |

@@ -52,7 +52,7 @@ lost, the heater can never run at full power.
 | `FLAG_SHT31` clears on the HMI | SHT31 not reporting valid data | Check I2C wiring (SDA→21, SCL→22), pull-ups, address (0x44 / 0x45) |
 | Heater + inlet fan off, **exhaust open + exhaust fan on** while in DRYING | Vent guard active — `pidCOMPUTE()` sees `!sht31OK` | Fix the sensor; the unit is intentionally venting instead of heating |
 | `[STATUS]` shows `temp=0` or stale temp | Sensor read failing or hung bus | Re-seat the SHT31; power-cycle the controller |
-| Serial shows CRC errors | Bad wiring / noise on I2C | Shorten leads, add 4.7 kΩ pull-ups, keep away from AC wiring |
+| Serial shows CRC errors | Bad wiring / noise on I2C | Shorten leads, keep I2C wiring away from AC wiring |
 
 > **Rule:** a dead sensor must never cause full-power heating. If you see the
 > heater ON with no valid temperature, something is wrong with the vent-guard
@@ -65,7 +65,7 @@ lost, the heater can never run at full power.
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | Board stuck in download mode / boot loop | A strapping pin is loaded down (0, 2, 4, 5, 12, 15) | Check wiring on strapping pins; remove external pull-ups |
-| SSR clicks / pulses at power-on | GPIO 14 used as an output (PWM burst at boot) or missing pull-down | Move to a clean GPIO; add 10 kΩ pull-downs |
+| SSR clicks / pulses at power-on | GPIO 14 used as an output (PWM burst at boot) | Move to a clean GPIO; never use GPIO 14 |
 | Upload fails with peripherals attached | A pin on the flash (6–11) or UART0 (1/3) line is loaded | Free GPIO 1/3 for USB-serial; keep 6–11 untouched |
 | Random resets during operation | Brown-out (PSU too weak) or WiFi current spikes | 5 V PSU ≥ 3 A; add bulk capacitance on the 5 V rail |
 

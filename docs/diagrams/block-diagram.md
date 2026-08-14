@@ -32,7 +32,7 @@ flowchart TB
         CELL["Load cell 1–50 kg"]
     end
 
-    subgraph SSR["SSR Bank (3–32 VDC in) + pull-downs"]
+    subgraph SSR["SSR Bank (3–32 VDC in)"]
         R1["SSR1 — PTC heater<br/>(GPIO 26)"]
         R2["SSR2 — exhaust outlet<br/>(GPIO 25)"]
         R3["SSR3 — inlet fan<br/>(GPIO 27)"]
@@ -87,6 +87,6 @@ flowchart TB
 | Mains | 220 VAC, fused per branch (10/5/2/2 A) |
 | PSU | Isolated 5 V; ESP32's onboard regulator makes 3.3 V |
 | Thermal cutoff | Mandatory, in series with the PTC heater branch |
-| SSR bank | Opto-isolated 3–32 VDC input; 10 kΩ pull-downs → fail-safe OFF at boot |
+| SSR bank | Opto-isolated 3–32 VDC input; firmware forces inputs LOW at boot |
 | ESP-NOW | Wireless, channel 1, packed binary packets (see `api/espnow-protocol.md`) |
 | Sensors | SHT31 on I2C; HX711 fully digital (no ADC2 dependence) |
