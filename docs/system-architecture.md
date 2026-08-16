@@ -57,7 +57,7 @@ Modules in `src/MultiDryerController/`, roughly in init order:
 
 ```
 SHT31 ──► temperature/humidity ─┐
-                                ├─► PID (PID_CONFIG) ─► SSR1–4 (heat/vent)
+                                ├─► PID (PID_CONFIG) ─► SSRs (heat/vent)
 HX711 ──► weight (1 Hz cache) ─┤        ▲ setpoint
                                 └─► DRYER_STATE (state machine, water loss)
                                         │
@@ -69,7 +69,7 @@ espnow_link ◄── status packet (1 Hz) ───┘   commands ──► sta
 1. **Boot fail-safe** — firmware forces all SSR pins LOW as the first step
    of `setup()`: nothing energizes during boot.
 2. **Sensor-fail vent guard** — if `sht31OK` is false, `pidCOMPUTE()` forces
-   heater + inlet fan OFF and vents (exhaust open + fan on): a dead sensor can
+   heater + inlet fan OFF and vents (exhaust fan on): a dead sensor can
    never cause full-power heating.
 3. **State-machine/manual arbitration** — any manual command ends an active
    session first, so PID and manual control never fight.

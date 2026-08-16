@@ -61,11 +61,11 @@ flowchart TD
     A["pidCOMPUTE()"] --> B{"PID mode == AUTOMATIC?"}
     B -->|"NO (MANUAL)"| Z["Return — outputs untouched"]
     B -->|"YES"| C{"SHT31 valid?"}
-    C -->|"NO"| V["VENT SAFETY:<br/>heater OFF, inlet OFF<br/>exhaust outlet + fan ON"]
+    C -->|"NO"| V["VENT SAFETY:<br/>heater OFF, inlet OFF<br/>exhaust fan ON"]
     C -->|"YES"| D["pid.Compute()"]
     D --> E{"PID_OUTPUT > 0?"}
-    E -->|"YES"| H["HEAT:<br/>SSR1 PTC + SSR3 inlet ON<br/>SSR2 + SSR4 OFF"]
-    E -->|"NO"| V2["VENT:<br/>SSR1 + SSR3 OFF<br/>SSR2 outlet + SSR4 fan ON"]
+    E -->|"YES"| H["HEAT:<br/>SSR1 PTC + SSR3 inlet ON<br/>SSR4 OFF"]
+    E -->|"NO"| V2["VENT:<br/>SSR1 + SSR3 OFF<br/>SSR4 exhaust fan ON"]
     V --> Z
     H --> Z
     V2 --> Z

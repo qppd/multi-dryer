@@ -14,9 +14,9 @@ each phase depends on the previous one. Tick boxes as you pass each check.
 - [ ] **0.1** Visual check: no solder bridges, shorts, or cold joints on SSR inputs, HX711, SHT31.
 - [ ] **0.2** Continuity: each GPIO → SSR input is wired directly, with no short to GND or the AC side.
 - [ ] **0.3** Power rails separated: 220 VAC side never adjacent to signal wires (< 6 mm rule).
-- [ ] **0.4** Fuses fitted on every AC branch (10 A heater / 5 A outlet / 2 A fans).
+- [ ] **0.4** Fuses fitted on every AC branch (10 A heater / 2 A / 2 A fans).
 - [ ] **0.5** Thermal cutoff wired **in series with the PTC heater** branch.
-- [ ] **0.6** Load cell wired correctly: Red→E+, Black→E−, Green→A+, White→A−, Shield→GND.
+- [ ] **0.6** Load cells (4 × 50 kg) wired as a summed full-bridge — each cell Red→E+, Black→E−, Green→A+, White→A−, Shield→GND; all E+/E−/A+/A− paralleled into the one HX711 channel.
 - [ ] **0.7** SHT31 on the I2C bus: SDA→21, SCL→22, VIN→3V3, GND→GND, addr 0x44 (0x45 if ADDR tied HIGH).
 - [ ] **0.8** Bench meter / clamp meter ready for AC-side output checks.
 
@@ -34,7 +34,7 @@ each phase depends on the previous one. Tick boxes as you pass each check.
 ### 1.2 Fail-safe test
 - [ ] **1.2a** After boot, measure each SSR input — must read **LOW** (firmware forces pins LOW at the top of `setup()`).
 - [ ] **1.2b** Heater and fans stay off during the ~1 s boot window (no SSR clicks).
-- [ ] **1.2c** Firmware forces SSR pins LOW first thing in `setup()` — verify no HIGH glitch on GPIO 26/25/27/13.
+- [ ] **1.2c** Firmware forces SSR pins LOW first thing in `setup()` — verify no HIGH glitch on populated SSR pins GPIO 26/27/13.
 
 ### 1.3 Flash test (with peripherals attached)
 - [ ] **1.3a** `esptool.py chip-id` / Arduino upload **succeeds** with SSRs + HX711 + SHT31 all connected (proves no strapping pin is loaded down).
@@ -71,7 +71,7 @@ each phase depends on the previous one. Tick boxes as you pass each check.
 - [ ] **3.1** `HEATER_ON` → SSR1 energizes (PTC) **and** SSR3 (inlet fan) — airflow with heat.
 - [ ] **3.2** `HEATER_OFF` → all outputs off.
 - [ ] **3.3** `FAN_ON` → SSR3 (inlet fan) only; `FAN_OFF` → off.
-- [ ] **3.4** `EXHAUST_ON` → SSR2 (outlet open) + SSR4 (exhaust fan); `EXHAUST_OFF` → off.
+- [ ] **3.4** `EXHAUST_ON` → SSR4 (exhaust fan); `EXHAUST_OFF` → off.
 - [ ] **3.5** Dashboard indicators (Heater/Fan/Exhaust) match the real SSR states within 1 s.
 
 ---
@@ -80,7 +80,7 @@ each phase depends on the previous one. Tick boxes as you pass each check.
 
 - [ ] **4.1** Set a setpoint (e.g. 60 °C) on the HMI → heater cycles; temperature rises toward the setpoint.
 - [ ] **4.2** Temperature settles near the setpoint without excessive overshoot (tune KP/KD if not).
-- [ ] **4.3** Above target: PID output → 0, unit vents (SSR2+SSR4 on, heater off).
+- [ ] **4.3** Above target: PID output → 0, unit vents (SSR4 on, heater off).
 - [ ] **4.4** **Safety guard:** unplug/disable the SHT31 mid-cycle → heater forced OFF, unit vents, HMI flags SHT31 absent (`FLAG_SHT31` clear).
 - [ ] **4.5** **Thermal cutoff:** heat the limit switch to its rating → heater branch clears (circuit trips) — no heating until reset.
 

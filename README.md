@@ -79,18 +79,17 @@ multi-dryer/
 |---|---|
 | ESP32 38-pin DevKitC (WROOM-32) | Main controller |
 | ESP32-S3 + 7″ touch display (Waveshare Touch-LCD-7) | HMI (LVGL UI) |
-| PTC heater + 220 V fans ×2, exhaust outlet | Drying loads, switched by SSRs |
-| SSR modules ×4 (3–32 VDC input) | AC load switching (firmware-enforced fail-safe) |
-| HX711 + load cell (1–50 kg) | Weight / water-loss measurement |
+| PTC heater 1500 W + 220 V fans ×2 (inlet, exhaust) | Drying loads, switched by SSRs |
+| SSR-40DA modules ×3, 40 A (3–32 VDC input) | AC load switching (firmware-enforced fail-safe) |
+| HX711 + 4× 50 kg load cells (summed bridge) | Weight / water-loss measurement |
 | SHT31 | Temperature & humidity (PID feedback) |
-| 5 V isolated PSU (≥3 A) | Low-voltage supply |
+| 220 VAC → 12 V 5 A PSU + 12 V → 5 V 3 A buck | Low-voltage supply |
 
 ### Controller Pin Map (summary)
 
 | Function | GPIO |
 |---|---|
 | SSR1 — PTC heater | 26 |
-| SSR2 — exhaust outlet | 25 |
 | SSR3 — inlet fan | 27 |
 | SSR4 — exhaust fan | 13 |
 | HX711 DOUT / SCK | 35 / 32 |

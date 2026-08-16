@@ -9,8 +9,9 @@ flowchart TB
     end
 
     subgraph PWR["Power"]
-        PSU["5 V isolated PSU<br/>(HLK-PM03 ≥3 A)"]
-        F1["Fuse 10A"] & F2["Fuse 5A"] & F3["Fuse 2A"] & F4["Fuse 2A"]
+        PSU["220 V → 12 V 5 A PSU"]
+        BUCK["12 V → 5 V 3 A buck"]
+        F1["Fuse 10A"] & F2["Fuse 2A"] & F3["Fuse 2A"]
         TCO["Thermal cutoff<br/>(heater branch)"]
     end
 
@@ -29,19 +30,17 @@ flowchart TB
     subgraph SENS["Sensors"]
         S31["SHT31<br/>temp/humidity<br/>(I2C 21/22)"]
         HX["HX711<br/>(DOUT 35 / SCK 32)"]
-        CELL["Load cell 1–50 kg"]
+        CELL["Load cells 4× 50 kg<br/>(summed bridge)"]
     end
 
-    subgraph SSR["SSR Bank (3–32 VDC in)"]
+    subgraph SSR["SSR Bank — 3× SSR-40DA 40 A (3–32 VDC in)"]
         R1["SSR1 — PTC heater<br/>(GPIO 26)"]
-        R2["SSR2 — exhaust outlet<br/>(GPIO 25)"]
         R3["SSR3 — inlet fan<br/>(GPIO 27)"]
         R4["SSR4 — exhaust fan<br/>(GPIO 13)"]
     end
 
     subgraph LOADS["AC Loads"]
-        HTR["PTC heater 500–2000 W"]
-        OUT["Exhaust outlet"]
+        HTR["PTC heater 1500 W"]
         IF["Inlet fan"]
         EF["Exhaust fan"]
     end
@@ -54,17 +53,15 @@ flowchart TB
         PROTO["serial_protocol.*<br/>(ESP-NOW)"]
     end
 
-    M --> PSU --> ESP
+    M --> PSU --> BUCK --> ESP
     ESP --> S31 & HX
     CELL --> HX
     S31 -.->|I2C| SHT
     HX -.->|kg| LC
     M --> F1 --> TCO --> R1
-    M --> F2 --> R2
-    M --> F3 --> R3
-    M --> F4 --> R4
+    M --> F2 --> R3
+    M --> F3 --> R4
     R1 --> HTR
-    R2 --> OUT
     R3 --> IF
     R4 --> EF
 
@@ -84,9 +81,9 @@ flowchart TB
 
 | Block | Notes |
 |---|---|
-| Mains | 220 VAC, fused per branch (10/5/2/2 A) |
-| PSU | Isolated 5 V; ESP32's onboard regulator makes 3.3 V |
+| Mains | 220 VAC, fused per branch (10/2/2 A) |
+| PSU | 220 V → 12 V 5 A PSU + 12 V → 5 V 3 A buck (5 V rail → ESP32; onboard regulator makes 3.3 V) |
 | Thermal cutoff | Mandatory, in series with the PTC heater branch |
-| SSR bank | Opto-isolated 3–32 VDC input; firmware forces inputs LOW at boot |
+| SSR bank | 3× SSR-40DA 40 A (SSR1 heater, SSR3 inlet, SSR4 exhaust); opto-isolated 3–32 VDC input; firmware forces inputs LOW at boot |
 | ESP-NOW | Wireless, channel 1, packed binary packets (see `api/espnow-protocol.md`) |
 | Sensors | SHT31 on I2C; HX711 fully digital (no ADC2 dependence) |

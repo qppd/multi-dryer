@@ -27,13 +27,13 @@ runaway, or mains exposure).
 
 ```
 AC-L ──┬─[F1 10A]──[Thermal cutoff]── SSR1 (load) ── PTC Heater ──┐
-       ├─[F2  5A]── SSR2 (load) ── Exhaust Outlet ───────────────┤
-       ├─[F3  2A]── SSR3 (load) ── Inlet Fan ────────────────────┤── AC-N
-       └─[F4  2A]── SSR4 (load) ── Exhaust Fan ──────────────────┘
+       ├─[F2  2A]── SSR3 (load) ── Inlet Fan ────────────────────┤── AC-N
+       └─[F3  2A]── SSR4 (load) ── Exhaust Fan ──────────────────┘
 ```
 
-- **Fuses:** 10 A on the heater branch (biggest load), 5 A on the exhaust
-  outlet, 2 A on each fan. Sized ~1.5× steady-state current.
+- **Fuses:** 10 A on the heater branch (1500 W / 220 V ≈ 6.8 A → ~1.5×), 2 A on
+  each fan branch. Sized ~1.5× steady-state current. There is **no separate
+  outlet branch** — the exhaust fan (SSR4) provides venting.
 - **Thermal cutoff (mandatory):** rated just above the maximum expected chamber
   temperature, wired **in series with the PTC heater** only. If the SSR sticks
   on or a fan dies, the cutoff opens the heater circuit mechanically.
@@ -46,7 +46,7 @@ AC-L ──┬─[F1 10A]──[Thermal cutoff]── SSR1 (load) ── PTC Hea
 | Item | Requirement |
 |---|---|
 | SSR input | 3–32 VDC (Fotek/Omron style) → driven directly by 3.3 V logic (5–10 mA) |
-| SSR output | 220 VAC, **derated** — 25 A SSR for the heater, 10 A for fans |
+| SSR output | 220 VAC, **derated** — 3 × SSR-40DA **40 A** modules (heater 1500 W ≈ 6.8 A, fans ≈ 1 A; large headroom, minimal heat) |
 | Isolation | Opto-isolated AC side — the mains never touches the ESP32 electrically |
 | Fail-safe | Firmware forces every SSR input LOW at the top of `setup()` — outputs stay OFF until explicitly enabled |
 | Thermal | Heat sinks on all SSRs; AC wiring separated from signal wiring |
@@ -65,7 +65,7 @@ ESP32 GPIO ── SSR input (+)      SSR input (−) ── GND
 
 ## 4. Boot-Time Safety
 
-1. Firmware sets all four SSR pins `pinMode(OUTPUT); digitalWrite(LOW);` **as the first thing in `setup()`**, before WiFi/ESP-NOW init — no SSR can energize until the firmware explicitly enables it.
+1. Firmware sets every SSR pin `pinMode(OUTPUT); digitalWrite(LOW);` **as the first thing in `setup()`**, before WiFi/ESP-NOW init — no SSR can energize until the firmware explicitly enables it. (The 3-SSR build drives SSR1, SSR3, and SSR4 only.)
 2. Pin selection avoids boot hazards: no strapping pins (0/2/4/5/12/15), no GPIO 14 (PWM burst at boot), no flash/UART0 pins — so an SSR can never be driven HIGH by default reset behavior.
 
 ---
@@ -79,7 +79,7 @@ In `PID_CONFIG.h::pidCOMPUTE()` — if the temperature feedback is lost
 ```
 PID_OUTPUT = 0
 SSR1 (heater)  = OFF      SSR3 (inlet fan)  = OFF
-SSR2 (outlet)  = ON       SSR4 (exhaust fan) = ON     ← vent instead of heat
+SSR4 (exhaust fan) = ON                          ← vent instead of heat
 ```
 
 **A dead sensor can never cause full-power heating.** The unit vents, `FLAG_SHT31`
@@ -105,9 +105,9 @@ guard passes — a session resumed with a dead sensor vents, it doesn't heat.
 
 | Aspect | Guidance |
 |---|---|
-| Heater sizing | 500–2000 W PTC, matched to chamber volume and target drying temp |
+| Heater sizing | 1500 W PTC, matched to chamber volume and target drying temp |
 | Airflow | Inlet fan runs whenever the heater is on (SSR1+SSR3 together) — no heater without airflow |
-| Exhaust | Outlet open + exhaust fan on when venting — removes humid air and excess heat |
+| Exhaust | Exhaust fan (SSR4) on when venting — removes humid air and excess heat |
 | Chamber sensor | SHT31 near the product (not directly in heater blast) for accurate feedback |
 | Over-temp option | Optional NTC thermistor on a spare ADC1 pin (GPIO 34/36/39) for a firmware high-limit cutoff — listed as a future enhancement |
 | SSR cooling | Heat sinks + airflow past the SSR bank; keep AC wiring ≥ 6 mm from signal lines |
@@ -119,8 +119,9 @@ must clear. See `bring-up-checklist.md` §4.5.
 
 ## 7. Enclosure & User Safety
 
-- Isolated 5 V PSU (e.g. Hi-Link HLK-PM03) with ≥ 3 A for the low-voltage side.
-- One common ground: PSU GND → ESP32 GND → HX711 GND (tie HMI ground too, though it's wireless).
+- 220 VAC → 12 V 5 A PSU feeding a 12 V → 5 V 3 A buck converter; the 5 V rail
+  feeds the ESP32's 5V pin (onboard regulator makes 3.3 V).
+- One common ground: 12 V PSU GND → buck GND → ESP32 GND → HX711 GND (tie HMI ground too, though it's wireless).
 - Never route 220 V wiring near signal pins; use cable glands / separate ducting.
 - Fuses accessible; thermal cutoff replaceable; clear labels on the enclosure.
 - Live-wiring rule: **always unplug mains before opening or servicing.**
@@ -137,7 +138,7 @@ must clear. See `bring-up-checklist.md` §4.5.
 | Controller crashes/resets | SSRs hold last state (bad) | Firmware forces pins LOW at boot + re-inits MANUAL | All outputs OFF at reset |
 | WiFi/ESP-NOW loss | Control link lost | Controller runs autonomously (state machine keeps safety rules) | Drying continues safely; HMI stale |
 | Command burst floods controller | Dropped/lost commands | 8-slot ring buffer | No loss |
-| Brown-out | Random SSR state | PSU ≥ 3 A + bulk capacitance; watchdog resets to safe boot | OFF at boot |
+| Brown-out | Random SSR state | 5 V buck ≥ 3 A + bulk capacitance; watchdog resets to safe boot | OFF at boot |
 
 ---
 

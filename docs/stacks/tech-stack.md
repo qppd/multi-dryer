@@ -12,11 +12,11 @@ and tooling.
 | Controller MCU | **ESP32 38-pin DevKitC** (WROOM-32 module) | Runs the drying process: sensors, PID, state machine, ESP-NOW |
 | HMI MCU | **ESP32-S3** (Waveshare ESP32-S3-Touch-LCD-7) | 800×480 RGB LCD + GT911 capacitive touch, runs the LVGL UI |
 | Temperature/humidity | **SHT31** (I2C, addr 0x44) | Chamber feedback for PID + humidity reporting |
-| Weight | **HX711** 24-bit ADC + 4-wire load cell (1–50 kg) | Product weight → water-loss % |
-| Heating | **PTC heater** (500–2000 W typical) | Drying heat, switched by SSR1 |
-| Airflow | Inlet fan + exhaust fan (220 V AC) + exhaust outlet | Circulation & moisture venting, SSRs 2–4 |
-| Power switching | **4× SSR** (3–32 VDC input / 220 VAC output) | Opto-isolated mains switching; firmware-enforced fail-safe OFF at boot |
-| Power | 5 V isolated PSU ≥ 3 A (e.g. Hi-Link HLK-PM03) | Low-voltage rail (ESP32's onboard regulator makes 3.3 V) |
+| Weight | **HX711** 24-bit ADC + 4× 50 kg load cells (summed full-bridge, 200 kg) | Product weight → water-loss % |
+| Heating | **PTC heater** (1500 W) | Drying heat, switched by SSR1 |
+| Airflow | Inlet fan + exhaust fan (220 V AC) | Circulation & moisture venting, SSRs 3–4 |
+| Power switching | **3× SSR-40DA (40 A)** (3–32 VDC input / 220 VAC output) | Opto-isolated mains switching; firmware-enforced fail-safe OFF at boot |
+| Power | 220 VAC → 12 V 5 A PSU + 12 V → 5 V 3 A buck converter | 5 V rail feeds ESP32; onboard regulator makes 3.3 V |
 | Protection | Fuses per AC branch + thermal cutoff on heater branch | Safety |
 
 Pin allocation: `src/MultiDryerController/PINS_CONFIG.h` · wiring plan:

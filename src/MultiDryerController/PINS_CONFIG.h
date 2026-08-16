@@ -17,15 +17,13 @@
 // SSR / Power Outputs
 // =========================
 // SSR1: PTC Heater (power stage)
-// SSR2: Exhaust Outlet (220 V)
 // SSR3: Inlet Air Fan
 // SSR4: Exhaust Fan
+// (3-SSR build: SSR1 = heater, SSR3 = inlet fan, SSR4 = exhaust fan. The old
+//  SSR2 exhaust-outlet channel on GPIO 25 was removed; venting is done by the
+//  exhaust fan alone.)
 #ifndef SSR1_PIN
 #define SSR1_PIN 26
-#endif
-
-#ifndef SSR2_PIN
-#define SSR2_PIN 25
 #endif
 
 #ifndef SSR3_PIN
@@ -63,7 +61,7 @@
 #define SHT31_SCL_PIN 22
 #endif
 
-// Spare digital: GPIO 16, 17, 18, 19, 23, 33 (16/17 = WROOM-32 only — do NOT
+// Spare digital: GPIO 16, 17, 18, 19, 23, 25, 33 (16/17 = WROOM-32 only — do NOT
 // use on WROVER modules, where they are PSRAM).
 // Spare input-only (future analog, ADC1/WiFi-safe): GPIO 34, 36, 39.
 

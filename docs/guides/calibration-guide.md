@@ -18,6 +18,10 @@ kilograms:
 | **Calibration factor** | Counts per kg (`scale.get_scale()`) — scales raw ADC counts to weight | NVS namespace `loadcell`, key `factor` |
 | **Offset (zero reference)** | The raw count read with nothing on the scale (`scale.get_offset()`) | NVS namespace `drying`, key `hxoff` (saved with every drying session) |
 
+> This rig uses **4× 50 kg load cells wired as a summed full-bridge** on the one
+> HX711 channel (200 kg total capacity). The procedure below calibrates the
+> combined signal — exactly the same as with a single cell.
+
 - **Factor** is set by `CALIBRATE:<kg>` and restored automatically on boot.
 - **Offset** is set by `TARE`. It is *also* captured with every drying session
   (with the initial weight), so a mid-drying reboot restores the exact zero

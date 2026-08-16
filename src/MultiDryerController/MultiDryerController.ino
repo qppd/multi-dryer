@@ -35,7 +35,7 @@ const char* stateName(uint8_t s) {
 }
 
 // ── SSR driver (declared extern in PID_CONFIG.h) ─────────────────────────────
-// SSR1 = PTC heater, SSR2 = exhaust outlet, SSR3 = inlet fan, SSR4 = exhaust fan
+// SSR1 = PTC heater, SSR3 = inlet fan, SSR4 = exhaust fan (3-SSR build)
 //
 // ssrStateFlags mirrors the REAL output state (used by the ESP-NOW status
 // packet so the HMI always shows what is actually energized — PID-driven or
@@ -48,7 +48,6 @@ void operateSSR(int relayIndex, bool state) {
     uint8_t flag;
     switch (relayIndex) {
         case 1: pin = SSR1_PIN; flag = FLAG_HEATER; break;
-        case 2: pin = SSR2_PIN; flag = FLAG_EXHAUST; break;
         case 3: pin = SSR3_PIN; flag = FLAG_FAN; break;
         case 4: pin = SSR4_PIN; flag = FLAG_EXHAUST; break;
         default: return;
@@ -66,7 +65,6 @@ void setup() {
   // float (high-Z) during the ~1 s boot window, so pins are driven LOW as
   // the first step of setup(), before WiFi/ESP-NOW init.
   pinMode(SSR1_PIN, OUTPUT); digitalWrite(SSR1_PIN, LOW);
-  pinMode(SSR2_PIN, OUTPUT); digitalWrite(SSR2_PIN, LOW);
   pinMode(SSR3_PIN, OUTPUT); digitalWrite(SSR3_PIN, LOW);
   pinMode(SSR4_PIN, OUTPUT); digitalWrite(SSR4_PIN, LOW);
 

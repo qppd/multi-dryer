@@ -240,7 +240,6 @@ static void handleCmd(uint8_t cmdType, float value) {
             break;
         case CMD_EXHAUST_ON:
             stopDrying();
-            operateSSR(2, true);          // exhaust outlet OPEN
             operateSSR(4, true);          // exhaust fan ON
             break;
         case CMD_EXHAUST_OFF:

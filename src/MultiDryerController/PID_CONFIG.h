@@ -5,10 +5,9 @@
 // Adapted from references/loadcell/FishDryer/PID_CONFIG.h:
 //   - Same PID_v1 library and PD tuning style (KP/KI/KD).
 //   - Same output model: 0..5000, output > 0 → heat, else vent.
-//   - SSR mapping adapted to the Multi Dryer loads:
-//       heating: SSR1 (PTC heater) + SSR3 (inlet fan)  ON,
-//                SSR2 (exhaust outlet) + SSR4 (exhaust fan) OFF
-//       venting: SSR1 + SSR3 OFF, SSR2 (outlet open) + SSR4 ON
+//   - SSR mapping adapted to the Multi Dryer loads (3-SSR build):
+//       heating: SSR1 (PTC heater) + SSR3 (inlet fan)  ON
+//       venting: SSR1 + SSR3 OFF, SSR4 (exhaust fan) ON
 //   - NEW safety guard (not in the baseline): if the SHT31 feedback is
 //     unavailable, the heater is forced OFF and the unit vents instead —
 //     a dead sensor must never cause full-power heating.
@@ -60,7 +59,6 @@ void stopPID() {
     pid.SetMode(MANUAL);
     PID_OUTPUT = 0;
     operateSSR(1, false);
-    operateSSR(2, false);
     operateSSR(3, false);
     operateSSR(4, false);
     Serial.println(F("[PID] stopped — all outputs OFF"));
@@ -77,7 +75,6 @@ void pidCOMPUTE() {
         PID_OUTPUT = 0;         // keep status flags consistent with real SSR state
         operateSSR(1, false);   // heater OFF
         operateSSR(3, false);   // inlet fan OFF
-        operateSSR(2, true);    // exhaust outlet OPEN
         operateSSR(4, true);    // exhaust fan ON — vent instead of heating
         return;
     }
@@ -85,16 +82,14 @@ void pidCOMPUTE() {
     pid.Compute();
 
     if (PID_OUTPUT > 0) {
-        // Heating: PTC + inlet fan circulate air; vents closed
+        // Heating: PTC + inlet fan circulate air
         operateSSR(1, true);
         operateSSR(3, true);
-        operateSSR(2, false);
         operateSSR(4, false);
     } else {
-        // Venting: heater/inlet off, exhaust outlet open + exhaust fan on
+        // Venting: heater/inlet off, exhaust fan on
         operateSSR(1, false);
         operateSSR(3, false);
-        operateSSR(2, true);
         operateSSR(4, true);
     }
 }

@@ -79,7 +79,7 @@ for the machine state.
 | 0x11 | `CMD_HEATER_OFF` | — | Manual: stops session/all outputs |
 | 0x12 | `CMD_FAN_ON` | — | Manual: inlet fan on (ends any session first) |
 | 0x13 | `CMD_FAN_OFF` | — | Manual: stops session/all outputs |
-| 0x14 | `CMD_EXHAUST_ON` | — | Manual: exhaust outlet open + exhaust fan on |
+| 0x14 | `CMD_EXHAUST_ON` | — | Manual: exhaust fan on (vents the chamber) |
 | 0x15 | `CMD_EXHAUST_OFF` | — | Manual: stops session/all outputs |
 | 0x20 | `CMD_PID_START` | — | Alias of `CMD_START_DRYING` (FishDryer baseline) |
 | 0x21 | `CMD_PID_STOP` | — | Alias of `CMD_STOP_DRYING` |

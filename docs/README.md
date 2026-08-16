@@ -6,7 +6,7 @@ Central index of all project documentation.
 
 | Doc | Path | Status |
 |---|---|---|
-| Wiring diagram (interactive) | [`schematic/wiring-diagram.md`](schematic/wiring-diagram.md) | ✅ link saved; **verify circuit against pins** |
+| Wiring diagram (interactive) | [`schematic/wiring-diagram.md`](schematic/wiring-diagram.md) | ⚠️ **needs 3-SSR update** — checklist in the doc |
 | Hardware wiring plan (written) | [`schematic/hardware-wiring.md`](schematic/hardware-wiring.md) | ✅ complete |
 | ESP-NOW protocol / API | [`api/espnow-protocol.md`](api/espnow-protocol.md) | ✅ complete |
 | Technology stack | [`stacks/tech-stack.md`](stacks/tech-stack.md) | ✅ complete |
