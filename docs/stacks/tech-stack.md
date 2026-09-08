@@ -83,7 +83,8 @@ Pin allocation: `src/MultiDryerController/PINS_CONFIG.h` · wiring plan:
 | Arduino IDE (or PlatformIO) | Build & flash both sketches |
 | esptool / Arduino uploader | Flashing via UART0 (GPIO 1/3) |
 | Serial monitor | MAC pairing, debug prints |
-| Cirkit Designer | Interactive wiring schematic (link in `docs/schematic/wiring-diagram.md`) |
+| **Fritzing** (0.9.3b) | Canonical editable schematic — `docs/schematic/multidryer.fzz` (see [`wiring-diagram.md`](../schematic/wiring-diagram.md)) |
+| Cirkit Designer | Legacy interactive wiring schematic (link in `docs/schematic/wiring-diagram.md`) |
 | GitHub (qppd/multi-dryer) | Version control, docs, issues |
 | PID_v1 / HX711 / LVGL docs | Library API references |
 

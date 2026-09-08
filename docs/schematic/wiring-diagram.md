@@ -1,16 +1,28 @@
 # Multi Dryer — Wiring Diagram
 
-Interactive schematic (Cirkit Designer):
+## Fritzing schematic (primary)
+
+The canonical schematic is maintained in Fritzing:
+
+- **Source (editable):** [`multidryer.fzz`](multidryer.fzz) — open in [Fritzing](https://fritzing.org) (made with 0.9.3b)
+- **Exported view:** [`multidryer_schematic.png`](multidryer_schematic.png) — schematic-view render
+- Reflects the **current 3-SSR build** (3× SSR-40DA, 1500 W PTC heater, 4× 50 kg load cells on one HX711, 220 VAC → 12 V PSU + LM2596 buck to 5 V, fused AC branches)
+
+> The `.fzz` is the source of truth for the schematic. Re-export the PNG
+> (`File → Export → PNG`) after every edit and commit both together.
+
+## Interactive schematic (secondary)
+
+Cirkit Designer project:
 
 **https://app.cirkitdesigner.com/project/9d03db5a-37c8-4f46-ac3f-7d5821ce26ce**
 
 > Requires a Cirkit Designer account/login to view.
 
-> ⚠️ **Status:** the saved project still shows the **old 4-SSR design**
+> ⚠️ **Status:** the saved Cirkit project still shows the **old 4-SSR design**
 > (4 SSRs, 5 V PSU, single load cell, exhaust outlet, fuses 10/5/2/2 A).
-> Apply the checklist below to bring it in line with the current BOM
-> ([`guides/bom.md`](../guides/bom.md)) and wiring plan
-> ([`hardware-wiring.md`](hardware-wiring.md)).
+> It has been superseded by the Fritzing schematic above. The checklist
+> below is kept for reference if the Cirkit project is ever refreshed.
 
 ---
 

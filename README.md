@@ -51,7 +51,9 @@ multi-dryer/
     ├── guides/bom.md                  # parts list with specs & quantities
     ├── guides/test-plan.md            # unit tests + HMI screen checks
     ├── schematic/hardware-wiring.md   # written pin-by-pin wiring plan
-    ├── schematic/wiring-diagram.md    # interactive wiring diagram link (Cirkit Designer)
+    ├── schematic/wiring-diagram.md    # Fritzing schematic (primary) + Cirkit Designer link
+    ├── schematic/multidryer.fzz       # editable Fritzing schematic source (3-SSR build)
+    ├── schematic/multidryer_schematic.png  # exported schematic view (PNG)
     └── diagrams/                      # block diagram + flow charts (Mermaid)
 ```
 
@@ -60,7 +62,7 @@ multi-dryer/
 - [docs/README.md](docs/README.md) — index & required-docs roadmap
 - [ESP-NOW protocol / API](docs/api/espnow-protocol.md) — packets, commands, states, pairing
 - [Technology stack](docs/stacks/tech-stack.md) — hardware, firmware, libraries, tools
-- [Wiring diagram](docs/schematic/wiring-diagram.md) — interactive Cirkit Designer schematic
+- [Wiring diagram & schematic](docs/schematic/wiring-diagram.md) — Fritzing schematic (primary) + interactive Cirkit Designer link
 - [Hardware wiring plan](docs/schematic/hardware-wiring.md) — written pin-by-pin reference
 - [Bring-up checklist](docs/guides/bring-up-checklist.md) — ordered boot/hardware verification
 - [Calibration guide](docs/guides/calibration-guide.md) — TARE + CALIBRATE:<kg> procedure, NVS persistence
@@ -95,7 +97,7 @@ multi-dryer/
 | HX711 DOUT / SCK | 35 / 32 |
 | SHT31 SDA / SCL | 21 / 22 |
 
-Full wiring plan: [`docs/schematic/hardware-wiring.md`](docs/schematic/hardware-wiring.md) and the interactive [Cirkit Designer schematic](https://app.cirkitdesigner.com/project/9d03db5a-37c8-4f46-ac3f-7d5821ce26ce).
+Full wiring plan: [`docs/schematic/hardware-wiring.md`](docs/schematic/hardware-wiring.md), the Fritzing schematic ([`multidryer.fzz`](docs/schematic/multidryer.fzz) — view: [`multidryer_schematic.png`](docs/schematic/multidryer_schematic.png)), and the interactive [Cirkit Designer schematic](https://app.cirkitdesigner.com/project/9d03db5a-37c8-4f46-ac3f-7d5821ce26ce).
 
 ## Getting Started
 
