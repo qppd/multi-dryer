@@ -24,6 +24,7 @@ flowchart TB
             PID["PID_CONFIG.h<br/>+ vent guard"]
             ST["DRYER_STATE.h<br/>state machine / NVS"]
             LNK["espnow_link.h"]
+            SHARED["espnow_protocol.h<br/>(shared, byte-identical)"]
         end
     end
 
@@ -49,8 +50,13 @@ flowchart TB
         HMI_ESP["ESP32-S3"]
         DSP["RGB LCD 800×480<br/>(ST7262)"]
         TCH["GT911 touch"]
-        LVGL["LVGL 8.x UI<br/>6 screens + alerts"]
-        PROTO["serial_protocol.*<br/>(ESP-NOW)"]
+        subgraph HMI_MOD["Firmware modules"]
+            PROTO["serial_protocol.*<br/>(ESP-NOW)"]
+            PRESETS["drying_presets.*<br/>(NVS presets)"]
+            OPT["ui_optimistic_state.*<br/>(instant feedback)"]
+            SM["screen_manager.*<br/>6 screens + alerts"]
+        end
+        LVGL["LVGL 8.x UI"]
     end
 
     M --> PSU --> BUCK --> ESP
@@ -71,6 +77,9 @@ flowchart TB
     ST --> LNK
     LNK -. "ESP-NOW 1 Hz status" .-> PROTO
     PROTO -. "commands" .-> LNK
+    PRESETS --> LVGL
+    OPT --> LVGL
+    SM --> LVGL
     PROTO --> LVGL
     LVGL --> DSP
     TCH --> LVGL
@@ -85,5 +94,6 @@ flowchart TB
 | PSU | 220 V → 12 V 5 A PSU + 12 V → 5 V 3 A buck (5 V rail → ESP32; onboard regulator makes 3.3 V) |
 | Thermal cutoff | Mandatory, in series with the PTC heater branch |
 | SSR bank | 3× SSR-40DA 40 A (SSR1 heater, SSR3 inlet, SSR4 exhaust); opto-isolated 3–32 VDC input; firmware forces inputs LOW at boot |
-| ESP-NOW | Wireless, channel 1, packed binary packets (see `api/espnow-protocol.md`) |
+| ESP-NOW | Wireless, channel 1, packed binary packets — `espnow_protocol.h` is byte-identical on both boards (see `api/espnow-protocol.md`) |
 | Sensors | SHT31 on I2C; HX711 fully digital (no ADC2 dependence) |
+| HMI | ESP32-S3 + 7″ RGB LCD (ST7262) + GT911 touch; LVGL 8.x; 6 screens (boot, dashboard, control, analytics, diagnostics, HOW TO USE); drying presets in NVS; optimistic button feedback; alerts |

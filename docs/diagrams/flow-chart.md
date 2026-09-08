@@ -8,18 +8,19 @@ Control-flow diagrams (Mermaid — renders on GitHub).
 
 ```mermaid
 flowchart TD
-    A["Power on / reset"] --> B["setup()<br/>1. SSR pins forced LOW"]
-    B --> C["2. Init SHT31 (I2C)"]
-    C --> D["3. Init HX711 + load cell<br/>restore factor from NVS"]
-    D --> E["4. Init PID (MANUAL)"]
-    E --> F["5. initDrying()<br/>restore session from NVS"]
-    F --> G{"Session saved?"}
-    G -->|"PAUSED"| H["Stay PAUSED — all outputs off"]
-    G -->|"DRYING"| I["Resume: PID back on,<br/>offset re-applied"]
-    G -->|"none"| J["IDLE"]
-    H --> K["loop()"]
-    I --> K
-    J --> K
+    A["Power on / reset"] --> B["setup()<br/>1. SSR pins forced LOW (fail-safe)"]
+    B --> C["2. initLoadCell() — HX711<br/>restore calibration factor from NVS"]
+    C --> D["3. initSHT31() — I2C<br/>temp/humidity, presence check"]
+    D --> E["4. initPID() — MANUAL (off)"]
+    E --> F["5. initDrying() — restore<br/>session + config from NVS"]
+    F --> G["6. initEspNow() — pair peer<br/>+ register callbacks"]
+    G --> H{"Saved session?"}
+    H -->|"PAUSED"| I["Stay PAUSED — all outputs off"]
+    H -->|"DRYING"| J["Resume DRYING — PID back on,<br/>HX711 offset re-applied"]
+    H -->|"none / COMPLETE"| K["IDLE — config restored<br/>(setpoint + water-loss target)"]
+    I --> L["loop()"]
+    J --> L
+    K --> L
 ```
 
 ---
@@ -28,11 +29,12 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A["loop()"] --> B["updateDrying()<br/>1 Hz tick — refresh weight cache"]
-    B --> C["pidCOMPUTE()<br/>heat or vent (SHT31 vent guard)"]
-    C --> D["espnowUpdate()<br/>1 cmd/iteration + 1 Hz status"]
-    D --> E["Debounce / housekeeping"]
-    E --> A
+    A["loop()"] --> B["updateSHT31()<br/>non-blocking sensor read<br/>state machine"]
+    B --> C["pidCOMPUTE()<br/>heat or vent — SHT31 vent guard<br/>(PID_v1 throttles to 2 s)"]
+    C --> D["updateDrying()<br/>1 Hz tick — weight cache, water loss,<br/>EDT, auto-complete, session save"]
+    D --> E["espnowUpdate()<br/>dequeue 1 cmd + 1 Hz status"]
+    E --> F["5 s debug status print"]
+    F --> A
 ```
 
 ---
@@ -41,16 +43,23 @@ flowchart TD
 
 ```mermaid
 stateDiagram-v2
-    [*] --> IDLE
+    [*] --> IDLE: boot — no saved session
+    [*] --> DRYING: boot — saved DRYING<br/>(PID back on)
+    [*] --> PAUSED: boot — saved PAUSED<br/>(all outputs off)
     IDLE --> DRYING: START_DRYING<br/>(capture initial weight, PID on)
     DRYING --> PAUSED: PAUSE_DRYING<br/>(all SSRs off, session saved)
     PAUSED --> DRYING: RESUME_DRYING<br/>(PID back on)
-    DRYING --> COMPLETE: water loss ≥ target<br/>(auto — all SSRs off)
+    DRYING --> COMPLETE: water loss ≥ target<br/>(auto — all SSRs off, session cleared)
     COMPLETE --> IDLE: STOP_DRYING
+    COMPLETE --> DRYING: START_DRYING<br/>(fresh session)
     PAUSED --> IDLE: STOP_DRYING
     DRYING --> IDLE: STOP_DRYING / manual override
     IDLE --> IDLE: manual HEATER/FAN/EXHAUST
 ```
+
+> **Boot-resume:** `initDrying()` restores a saved session from NVS — a DRYING
+> session re-enables the PID; a PAUSED session stays off. Completed sessions
+> clear the NVS marker, so a finished cycle always boots to IDLE.
 
 ---
 

@@ -1,18 +1,3 @@
-// MultiDryerHMI.ino
-// Multi Dryer - HMI Display Controller
-// Industrial-grade control panel for automated drying systems
-//
-// Hardware: Waveshare ESP32-S3-Touch-LCD-7 (800x480)
-// Framework: LVGL v8
-// Communication: ESP-NOW to the Multi Dryer controller (see espnow_protocol.h)
-// Ported from references/HMIDisplay (Fish Dryer V2 baseline)
-//
-// Required LVGL fonts (enable in lv_conf.h):
-//   LV_FONT_MONTSERRAT_14, _16, _20, _24, _30, _36, _48
-// Required LVGL widgets (enable in lv_conf.h):
-//   LV_USE_METER, LV_USE_CHART, LV_USE_BAR, LV_USE_SLIDER,
-//   LV_USE_SWITCH, LV_USE_TABVIEW, LV_USE_CHECKBOX, LV_USE_SPINNER
-
 #include <Arduino.h>
 #include <esp_display_panel.hpp>
 #include <lvgl.h>
@@ -46,9 +31,6 @@ void setup() {
     // Initialize dryer data with defaults
     initDryerData();
 
-    // Load saved drying presets (seeds Tuyo/Danggit/Pusit on first boot)
-    presetsInit();
-
     // Initialize display board
     Serial.println("[HMI] Initializing display board...");
     Board *board = new Board();
@@ -73,6 +55,12 @@ void setup() {
     // Initialize UART communication with dryer controller
     Serial.println("[HMI] Initializing serial protocol...");
     serialProtoInit();
+
+    // Load saved drying presets (seeds Tuyo/Danggit/Pusit on first boot)
+    // NOTE: Must run AFTER board->begin() so the LCD frame buffers are allocated
+    // first. presetsInit() uses NVS (flash) and some heap for Preferences; running
+    // it before board init consumed heap needed by the RGB panel driver.
+    presetsInit();
 
     // Build the UI (must hold LVGL mutex)
     Serial.println("[HMI] Building UI...");

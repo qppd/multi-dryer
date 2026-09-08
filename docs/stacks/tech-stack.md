@@ -30,7 +30,7 @@ Pin allocation: `src/MultiDryerController/PINS_CONFIG.h` · wiring plan:
 
 | Module | Responsibility |
 |---|---|
-| `MultiDryerController.ino` | Entry point: init order (pins → SHT31 → load cell → PID → drying → ESP-NOW), main loop |
+| `MultiDryerController.ino` | Entry point: init order (pins → load cell → SHT31 → PID → drying → ESP-NOW), main loop |
 | `PINS_CONFIG.h` | Boot/WiFi-safe pin assignments |
 | `SHT31_CONFIG.h` | Non-blocking SHT31 driver, hardware I2C, CRC-8 |
 | `LOADCELL_CONFIG.h` | HX711 driver: kg readings, TARE/CALIBRATE, calibration factor in NVS |

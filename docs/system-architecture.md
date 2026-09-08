@@ -44,7 +44,7 @@ Modules in `src/MultiDryerController/`, roughly in init order:
 
 | Module | Responsibility |
 |---|---|
-| `MultiDryerController.ino` | Entry point: init sequence (pins → SHT31 → load cell → PID → drying → ESP-NOW) and the main loop |
+| `MultiDryerController.ino` | Entry point: init sequence (pins → load cell → SHT31 → PID → drying → ESP-NOW) and the main loop |
 | `PINS_CONFIG.h` | Boot/WiFi-safe pin assignments (single source of truth) |
 | `SHT31_CONFIG.h` | Non-blocking SHT31 driver (I2C, CRC-8) → `getTemperature()` / `getHumidity()` |
 | `LOADCELL_CONFIG.h` | HX711 driver: kg reads, TARE/CALIBRATE, factor in NVS |

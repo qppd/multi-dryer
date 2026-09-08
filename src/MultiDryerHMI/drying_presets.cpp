@@ -62,6 +62,7 @@ void presetsInit() {
 
     n = min(n, (uint8_t)PRESET_MAX_COUNT);
     char key[8];
+    prefs.begin(PRESETS_NS, true);
     for (int i = 0; i < (int)n; i++) {
         snprintf(key, sizeof(key), "n%d", i);
         String name = prefs.getString(key, "");
@@ -76,6 +77,7 @@ void presetsInit() {
         _presets[_count].wlTarget = constrain(w, PRESET_WL_MIN,   PRESET_WL_MAX);
         _count++;
     }
+    prefs.end();
 }
 
 int presetsGetCount() { return _count; }
