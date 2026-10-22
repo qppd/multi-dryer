@@ -174,6 +174,7 @@ static lv_obj_t* presetModalStatus = NULL;
 static lv_obj_t* presetNameTa      = NULL;
 static lv_obj_t* presetTempLbl     = NULL;
 static lv_obj_t* presetWlLbl       = NULL;
+static lv_obj_t* presetKb          = NULL;
 static float presetModalTemp = 60.0f;
 static float presetModalWl   = 70.0f;
 
@@ -297,6 +298,30 @@ static void closePresetModalCb(lv_event_t* e) {
     presetNameTa      = NULL;
     presetTempLbl     = NULL;
     presetWlLbl       = NULL;
+    presetKb          = NULL;
+}
+
+// ── Preset name keyboard ──────────────────────────────────────────────────────
+// The keyboard starts hidden (it used to be created visible and never hid, so it
+// covered the bottom of the modal — including the CLOSE button). It now appears
+// only while the name field is being edited and can be dismissed with ✓ / ✗ or
+// by tapping the dimmed backdrop.
+static void presetKbShowCb(lv_event_t* e) {
+    (void)e;
+    if (!lv_obj_is_valid(presetKb)) return;
+    lv_obj_clear_flag(presetKb, LV_OBJ_FLAG_HIDDEN);
+    lv_obj_move_foreground(presetKb);
+}
+
+static void presetKbHideCb(lv_event_t* e) {
+    (void)e;
+    if (lv_obj_is_valid(presetKb)) lv_obj_add_flag(presetKb, LV_OBJ_FLAG_HIDDEN);
+}
+
+static void presetOverlayClickCb(lv_event_t* e) {
+    // Only a tap on the dimmed backdrop itself hides it — not taps that bubbled
+    // up from the box or from the keyboard keys.
+    if (lv_event_get_target(e) == presetModalOverlay) presetKbHideCb(e);
 }
 
 static void openPresetManagerCb(lv_event_t* e) {
@@ -337,11 +362,23 @@ static void openPresetManagerCb(lv_event_t* e) {
     lv_obj_set_flex_flow(box, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(box, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
 
-    // Title
-    lv_obj_t* title = lv_label_create(box);
+    // Title row — the X is always visible even when the form list scrolls
+    lv_obj_t* titleRow = lv_obj_create(box);
+    lv_obj_set_size(titleRow, LV_PCT(100), 36);
+    lv_obj_set_style_bg_opa(titleRow, LV_OPA_TRANSP, 0);
+    lv_obj_set_style_border_width(titleRow, 0, 0);
+    lv_obj_set_style_pad_all(titleRow, 0, 0);
+    lv_obj_set_scrollbar_mode(titleRow, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_flex_flow(titleRow, LV_FLEX_FLOW_ROW);
+    lv_obj_set_flex_align(titleRow, LV_FLEX_ALIGN_SPACE_BETWEEN, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+
+    lv_obj_t* title = lv_label_create(titleRow);
     lv_label_set_text(title, LV_SYMBOL_SETTINGS "  PRESET MANAGER");
     lv_obj_set_style_text_font(title, FONT_LARGE, 0);
     lv_obj_set_style_text_color(title, COLOR_ACCENT, 0);
+
+    lv_obj_t* closeX = createButton(titleRow, LV_SYMBOL_CLOSE, 44, 34, &style_btn_danger);
+    lv_obj_add_event_cb(closeX, closePresetModalCb, LV_EVENT_CLICKED, NULL);
 
     // ── New preset form ──
     lv_obj_t* formTitle = lv_label_create(box);
@@ -415,7 +452,7 @@ static void openPresetManagerCb(lv_event_t* e) {
     lv_obj_set_style_text_color(listTitle, COLOR_TEXT_PRIMARY, 0);
 
     presetModalList = lv_obj_create(box);
-    lv_obj_set_size(presetModalList, LV_PCT(100), 190);
+    lv_obj_set_size(presetModalList, LV_PCT(100), 150);
     lv_obj_set_style_bg_opa(presetModalList, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(presetModalList, 1, 0);
     lv_obj_set_style_border_color(presetModalList, COLOR_BORDER, 0);
@@ -438,10 +475,18 @@ static void openPresetManagerCb(lv_event_t* e) {
     lv_obj_t* closeBtn = createButton(box, LV_SYMBOL_CLOSE "  CLOSE", LV_PCT(100), 40, &style_btn_danger);
     lv_obj_add_event_cb(closeBtn, closePresetModalCb, LV_EVENT_CLICKED, NULL);
 
-    // Keyboard bound to the name field (shows on focus, hides on outside tap)
-    lv_obj_t* kb = lv_keyboard_create(overlay);
-    lv_keyboard_set_textarea(kb, presetNameTa);
-    lv_obj_align(kb, LV_ALIGN_BOTTOM_MID, 0, 0);
+    // Keyboard bound to the name field — hidden until the field is tapped.
+    presetKb = lv_keyboard_create(overlay);
+    lv_obj_set_size(presetKb, SCREEN_WIDTH, 210);
+    lv_obj_align(presetKb, LV_ALIGN_BOTTOM_MID, 0, 0);
+    lv_keyboard_set_textarea(presetKb, presetNameTa);
+    lv_obj_add_flag(presetKb, LV_OBJ_FLAG_HIDDEN);
+
+    lv_obj_add_event_cb(presetNameTa, presetKbShowCb, LV_EVENT_CLICKED, NULL);
+    lv_obj_add_event_cb(presetNameTa, presetKbShowCb, LV_EVENT_FOCUSED, NULL);
+    lv_obj_add_event_cb(presetKb, presetKbHideCb, LV_EVENT_READY, NULL);
+    lv_obj_add_event_cb(presetKb, presetKbHideCb, LV_EVENT_CANCEL, NULL);
+    lv_obj_add_event_cb(overlay, presetOverlayClickCb, LV_EVENT_CLICKED, NULL);
 }
 
 // Temperature +/- callbacks (only for OTHERS preset)
@@ -604,7 +649,7 @@ static void resumeDryingCb(lv_event_t* e) {
 static lv_obj_t* createSwitchRow(lv_obj_t* parent, const char* label, lv_obj_t** switchOut,
                                   lv_event_cb_t cb) {
     lv_obj_t* row = lv_obj_create(parent);
-    lv_obj_set_size(row, LV_PCT(100), 50);
+    lv_obj_set_size(row, LV_PCT(100), 46);
     lv_obj_set_style_bg_opa(row, LV_OPA_TRANSP, 0);
     lv_obj_set_style_border_width(row, 0, 0);
     lv_obj_set_style_pad_all(row, 0, 0);
@@ -655,7 +700,7 @@ lv_obj_t* createControlScreen() {
     // ==================== LEFT COLUMN ====================
     lv_obj_t* leftCol = createCard(content, 370, 390);
     lv_obj_set_flex_flow(leftCol, LV_FLEX_FLOW_COLUMN);
-    lv_obj_set_style_pad_row(leftCol, 10, 0);
+    lv_obj_set_style_pad_row(leftCol, 7, 0);
 
     // -- Temperature setpoint section --
     lv_obj_t* tempTitle = lv_label_create(leftCol);
@@ -677,9 +722,10 @@ lv_obj_t* createControlScreen() {
 
     rebuildPresetRow();   // fills the row from saved presets (+ Custom, + Add)
 
-    // Current temp display
+    // Current temp display — tall enough for the SET caption plus the XL value
+    // (a 30 px font is ~37 px line height, so 55 px clipped the text).
     lv_obj_t* tempDisplay = lv_obj_create(leftCol);
-    lv_obj_set_size(tempDisplay, LV_PCT(100), 55);
+    lv_obj_set_size(tempDisplay, LV_PCT(100), 76);
     lv_obj_set_style_bg_color(tempDisplay, lv_color_hex(0x141E30), 0);
     lv_obj_set_style_bg_opa(tempDisplay, LV_OPA_COVER, 0);
     lv_obj_set_style_radius(tempDisplay, 8, 0);
@@ -688,6 +734,9 @@ lv_obj_t* createControlScreen() {
     lv_obj_set_scrollbar_mode(tempDisplay, LV_SCROLLBAR_MODE_OFF);
     lv_obj_set_flex_flow(tempDisplay, LV_FLEX_FLOW_COLUMN);
     lv_obj_set_flex_align(tempDisplay, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER, LV_FLEX_ALIGN_CENTER);
+    lv_obj_set_style_pad_top(tempDisplay, 8, 0);      // breathing room above "SET:"
+    lv_obj_set_style_pad_bottom(tempDisplay, 6, 0);
+    lv_obj_set_style_pad_row(tempDisplay, 2, 0);
 
     lv_obj_t* setLabel = lv_label_create(tempDisplay);
     lv_label_set_text(setLabel, "SET:");

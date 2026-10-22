@@ -1,141 +1,139 @@
 // SHT31_CONFIG.h
-// Multi Dryer Controller — non-blocking SHT31 temperature/humidity reader.
+// Multi Dryer Controller — SHT30/SHT31 temperature/humidity reader.
 //
-// Adapted from references/loadcell/FishDryer/SHT31_CONFIG.h:
-//   - FishDryer used SoftwareWire on the Nano because its hardware I2C was
-//     occupied by the HMI slave link. The ESP32 controller talks to the HMI
-//     wirelessly (ESP-NOW), so the hardware I2C bus is free — we use Wire on
-//     SHT31_SDA_PIN/SHT31_SCL_PIN (GPIO 21/22).
-//   - Same non-blocking state machine, CRC-8 check, and value clamping.
+// Uses the Adafruit_SHT31 library — the same code path proven on the FishDryer
+// hardware — but keeps the multi-dryer's polling cadence: one measurement every
+// SHT31_READ_INTERVAL_MS, never inside the fast control loop. A single
+// readBoth() blocks ~15-30 ms once per 2 s, which is harmless here (the HX711
+// and PID run on their own slower schedules).
+//
+// Address: modules answer at 0x44 (default) or 0x45 (ADDR pin HIGH). Both are
+// probed automatically instead of hard-coding one, and the sensor is re-detected
+// if it stops answering (brown-out / loose wire) without rebooting.
 //
 // Call initSHT31()  once in setup().
-// Call updateSHT31() every loop() iteration (non-blocking state machine).
+// Call updateSHT31() every loop() iteration (rate-limited internally).
 // CURRENT_TEMPERATURE and CURRENT_HUMIDITY are updated automatically.
 
 #ifndef SHT31_CONFIG_H
 #define SHT31_CONFIG_H
 
 #include <Wire.h>
+#include <Adafruit_SHT31.h>
 #include "PINS_CONFIG.h"
 
 // ── SHT31 constants ───────────────────────────────────────────────────────────
-#define SHT31_ADDR              0x44    // change to 0x45 if ADDR pin is tied HIGH
-#define SHT31_READ_INTERVAL_MS  2000    // sensor poll rate
-#define SHT31_MEAS_DELAY_MS     20      // high-repeatability measurement time
-
-// Single-shot command: high repeatability, clock-stretching disabled
-#define SHT31_CMD_MSB           0x24
-#define SHT31_CMD_LSB           0x00
+#define SHT31_ADDR_PRIMARY        0x44   // ADDR pin LOW (module default)
+#define SHT31_ADDR_ALTERNATE      0x45   // ADDR pin HIGH
+#define SHT31_READ_INTERVAL_MS    2000   // sensor poll rate
+#define SHT31_REINIT_AFTER_FAILS  3      // consecutive failures before re-probing
 
 // Externals defined in MultiDryerController.ino
 extern bool   sht31OK;
 extern float  CURRENT_HUMIDITY;
 extern double CURRENT_TEMPERATURE;
 
-// ── State machine ─────────────────────────────────────────────────────────────
-enum SHT31Phase : uint8_t { SHT_IDLE, SHT_WAITING };
+// ── State ─────────────────────────────────────────────────────────────────────
+static Adafruit_SHT31 sht31;
+static unsigned long  _sht31LastRead = 0;
+static uint8_t        _sht31Addr     = 0;    // 0 = not detected
+static uint8_t        _sht31Fails    = 0;
 
-static SHT31Phase    _sht31Phase      = SHT_IDLE;
-static unsigned long _sht31LastRead   = 0;
-static unsigned long _sht31TriggerMs  = 0;
-static uint8_t       _sht31Fails      = 0;
+// ── Helpers ──────────────────────────────────────────────────────────────────
+static bool _sht31Probe(uint8_t addr) {
+  Wire.beginTransmission(addr);
+  return Wire.endTransmission() == 0;
+}
 
-// ── CRC-8 (polynomial 0x31, init 0xFF) ───────────────────────────────────────
-static uint8_t _sht31CRC(const uint8_t* data, uint8_t len) {
-  uint8_t crc = 0xFF;
-  for (uint8_t i = 0; i < len; i++) {
-    crc ^= data[i];
-    for (uint8_t b = 0; b < 8; b++)
-      crc = (crc & 0x80) ? ((crc << 1) ^ 0x31) : (crc << 1);
+// Scan the bus once and log every device that answers — makes wiring and
+// address problems obvious instead of a bare "not found".
+static void _sht31ScanBus() {
+  Serial.print(F("[SHT31] I2C scan:"));
+  uint8_t found = 0;
+  for (uint8_t a = 0x08; a < 0x78; a++) {
+    if (_sht31Probe(a)) {
+      Serial.printf(" 0x%02X", a);
+      found++;
+    }
   }
-  return crc;
+  if (!found) Serial.print(F(" no devices"));
+  Serial.println();
+}
+
+// Bring the sensor up at one address (Adafruit begin() = soft reset + status read).
+static bool _sht31BeginAt(uint8_t addr) {
+  if (!sht31.begin(addr)) return false;
+  _sht31Addr  = addr;
+  sht31OK     = true;
+  _sht31Fails = 0;
+  Serial.printf("[SHT31] Sensor ready at 0x%02X\n", addr);
+  return true;
+}
+
+static bool _sht31Detect() {
+  return _sht31BeginAt(SHT31_ADDR_PRIMARY) || _sht31BeginAt(SHT31_ADDR_ALTERNATE);
 }
 
 // ── Init ──────────────────────────────────────────────────────────────────────
 void initSHT31() {
   Wire.begin(SHT31_SDA_PIN, SHT31_SCL_PIN, 100000);  // hardware I2C, GPIO 21/22
 
-  // Boot-time presence check (first poll would otherwise take ~2 s to fail)
-  Wire.beginTransmission(SHT31_ADDR);
-  sht31OK = (Wire.endTransmission() == 0);
-
   Serial.print(F("[SHT31] I2C on GPIO "));
   Serial.print(SHT31_SDA_PIN);
   Serial.print(F("/"));
   Serial.print(SHT31_SCL_PIN);
-  Serial.print(sht31OK ? F(" — sensor found (0x44)") : F(" — NO SENSOR!"));
-  Serial.println();
+  Serial.println(F(" @100kHz"));
+
+  _sht31LastRead = millis();
+  if (!_sht31Detect()) {
+    sht31OK = false;
+    Serial.println(F("[SHT31] NO SENSOR — check SDA/SCL, 3.3 V and ADDR strap"));
+    _sht31ScanBus();
+  }
 }
 
-// ── Non-blocking state machine — call every loop() ───────────────────────────
+// ── Poll (rate-limited — call every loop()) ──────────────────────────────────
 void updateSHT31() {
   unsigned long now = millis();
+  if (now - _sht31LastRead < SHT31_READ_INTERVAL_MS) return;
+  _sht31LastRead = now;
 
-  switch (_sht31Phase) {
-
-    case SHT_IDLE:
-      if (now - _sht31LastRead < SHT31_READ_INTERVAL_MS) return;
-      Wire.beginTransmission(SHT31_ADDR);
-      Wire.write(SHT31_CMD_MSB);
-      Wire.write(SHT31_CMD_LSB);
-      if (Wire.endTransmission() == 0) {
-        _sht31Phase     = SHT_WAITING;
-        _sht31TriggerMs = now;
-      } else {
-        _sht31Fails++;
-        _sht31LastRead = now;
-        // NOTE: noInterrupts() only masks interrupts on the current core — it is
-        // NOT a cross-task critical section on ESP32/FreeRTOS. Fine while all
-        // access happens in loop(); guard with a mutex if ESP-NOW/HMI code ever
-        // touches these globals from another task.
-        noInterrupts(); sht31OK = false; interrupts();
-      }
-      break;
-
-    case SHT_WAITING:
-      if (now - _sht31TriggerMs < SHT31_MEAS_DELAY_MS) return;
-      _sht31LastRead = now;
-      _sht31Phase    = SHT_IDLE;
-
-      if (Wire.requestFrom(SHT31_ADDR, 6) != 6) {
-        _sht31Fails++;
-        noInterrupts(); sht31OK = false; interrupts();
-        return;
-      }
-      {
-        uint8_t buf[6];
-        for (uint8_t i = 0; i < 6; i++) buf[i] = Wire.read();
-
-        if (_sht31CRC(buf, 2) != buf[2] || _sht31CRC(buf + 3, 2) != buf[5]) {
-          _sht31Fails++;
-          noInterrupts(); sht31OK = false; interrupts();
-          return;
-        }
-
-        uint16_t rawT = ((uint16_t)buf[0] << 8) | buf[1];
-        uint16_t rawH = ((uint16_t)buf[3] << 8) | buf[4];
-        float temp = -45.0f + 175.0f * ((float)rawT / 65535.0f);
-        float hum  = 100.0f * ((float)rawH / 65535.0f);
-
-        if (temp >= -40.0f && temp <= 125.0f && hum >= 0.0f && hum <= 100.0f) {
-          noInterrupts();
-          CURRENT_TEMPERATURE = (double)temp;
-          CURRENT_HUMIDITY    = hum;
-          sht31OK             = true;
-          interrupts();
-          _sht31Fails = 0;
-        } else {
-          _sht31Fails++;
-          noInterrupts(); sht31OK = false; interrupts();
-        }
-      }
-      break;
+  // Not detected (or dropped off the bus): try to bring it back.
+  if (_sht31Addr == 0) {
+    if (!_sht31Detect()) return;
+    // fall through and take the first reading in this same call
   }
+
+  float t = NAN, h = NAN;
+  if (!sht31.readBoth(&t, &h) || isnan(t) || isnan(h)) {
+    if (_sht31Fails < 255) _sht31Fails++;
+    sht31OK = false;
+    if (_sht31Fails >= SHT31_REINIT_AFTER_FAILS) {
+      _sht31Addr  = 0;    // force a fresh begin() on the next poll
+      _sht31Fails = 0;
+    }
+    return;
+  }
+
+  // Datasheet operating range; reject obviously bogus frames.
+  if (t < -40.0f || t > 125.0f || h < 0.0f || h > 100.0f) {
+    if (_sht31Fails < 255) _sht31Fails++;
+    sht31OK = false;
+    return;
+  }
+
+  noInterrupts();
+  CURRENT_TEMPERATURE = (double)t;
+  CURRENT_HUMIDITY    = h;
+  sht31OK             = true;
+  interrupts();
+  _sht31Fails = 0;
 }
 
 // ── Read helpers (for PID / HMI status) ──────────────────────────────────────
 float getTemperature() { return (float)CURRENT_TEMPERATURE; }
 float getHumidity()    { return CURRENT_HUMIDITY; }
-uint8_t getSHT31Fails() { return _sht31Fails; }   // diagnostic: 0 = healthy, >0 = sensor errors since last good read
+uint8_t getSHT31Fails() { return _sht31Fails; }   // diagnostic: 0 = healthy, >0 = errors since last good read
+uint8_t getSHT31Address() { return _sht31Addr; }  // 0 = not detected, else 0x44 / 0x45
 
 #endif // SHT31_CONFIG_H

@@ -27,7 +27,7 @@ static lv_obj_t* tabview = NULL;
 static lv_obj_t* createStyledChart(lv_obj_t* parent, lv_chart_series_t** seriesOut,
                                     lv_color_t color, lv_coord_t minY, lv_coord_t maxY) {
     lv_obj_t* chart = lv_chart_create(parent);
-    lv_obj_set_size(chart, 710, 280);
+    lv_obj_set_size(chart, LV_PCT(100), 280);
     lv_chart_set_type(chart, LV_CHART_TYPE_LINE);
     lv_chart_set_point_count(chart, CHART_POINT_COUNT);
     lv_chart_set_range(chart, LV_CHART_AXIS_PRIMARY_Y, minY, maxY);
@@ -59,6 +59,17 @@ static lv_obj_t* createStyledChart(lv_obj_t* parent, lv_chart_series_t** seriesO
     return chart;
 }
 
+// Tab pages are plain containers with no layout, so the value header and the
+// chart were both placed at (0,0) and overlapped. Lay them out top-to-bottom.
+static void setupChartTab(lv_obj_t* tab) {
+    lv_obj_set_style_bg_color(tab, COLOR_BG, 0);
+    lv_obj_set_style_pad_all(tab, 8, 0);
+    lv_obj_set_style_pad_row(tab, 8, 0);
+    lv_obj_set_scrollbar_mode(tab, LV_SCROLLBAR_MODE_OFF);
+    lv_obj_set_flex_flow(tab, LV_FLEX_FLOW_COLUMN);
+    lv_obj_set_flex_align(tab, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START, LV_FLEX_ALIGN_START);
+}
+
 lv_obj_t* createAnalyticsScreen() {
     lv_obj_t* scr = lv_obj_create(NULL);
     lv_obj_add_style(scr, &style_screen_bg, 0);
@@ -88,8 +99,7 @@ lv_obj_t* createAnalyticsScreen() {
 
     // ============ Temperature Tab ============
     lv_obj_t* tempTab = lv_tabview_add_tab(tabview, LV_SYMBOL_CHARGE " Temperature");
-    lv_obj_set_style_bg_color(tempTab, COLOR_BG, 0);
-    lv_obj_set_style_pad_all(tempTab, 8, 0);
+    setupChartTab(tempTab);
 
     // Current value header
     lv_obj_t* tempHeader = lv_obj_create(tempTab);
@@ -115,8 +125,7 @@ lv_obj_t* createAnalyticsScreen() {
 
     // ============ Humidity Tab ============
     lv_obj_t* humTab = lv_tabview_add_tab(tabview, LV_SYMBOL_TINT " Humidity");
-    lv_obj_set_style_bg_color(humTab, COLOR_BG, 0);
-    lv_obj_set_style_pad_all(humTab, 8, 0);
+    setupChartTab(humTab);
 
     lv_obj_t* humHeader = lv_obj_create(humTab);
     lv_obj_set_size(humHeader, LV_PCT(100), 40);
@@ -141,8 +150,7 @@ lv_obj_t* createAnalyticsScreen() {
 
     // ============ Weight Tab ============
     lv_obj_t* weightTab = lv_tabview_add_tab(tabview, LV_SYMBOL_DOWNLOAD " Weight");
-    lv_obj_set_style_bg_color(weightTab, COLOR_BG, 0);
-    lv_obj_set_style_pad_all(weightTab, 8, 0);
+    setupChartTab(weightTab);
 
     lv_obj_t* weightHeader = lv_obj_create(weightTab);
     lv_obj_set_size(weightHeader, LV_PCT(100), 40);

@@ -23,15 +23,15 @@
 //  SSR2 exhaust-outlet channel on GPIO 25 was removed; venting is done by the
 //  exhaust fan alone.)
 #ifndef SSR1_PIN
-#define SSR1_PIN 26
+#define SSR1_PIN 25
 #endif
 
 #ifndef SSR3_PIN
-#define SSR3_PIN 27
+#define SSR3_PIN 26
 #endif
 
 #ifndef SSR4_PIN
-#define SSR4_PIN 13
+#define SSR4_PIN 27
 #endif
 
 // =========================

@@ -92,8 +92,11 @@ void loop() {
   unsigned long now = millis();
   if (now - _lastStatusPrint >= 5000) {
     _lastStatusPrint = now;
+    char sht[12];
+    if (getSHT31Address()) snprintf(sht, sizeof(sht), "0x%02X", getSHT31Address());
+    else                   strcpy(sht, "MISSING");
     Serial.printf("[STATUS] %-8s temp=%.2f C  hum=%.1f %%  weight=%.3f kg  "
-                  "loss=%.1f%%  setpoint=%.1f C  pid=%.0f  hmi=%s\n",
+                  "loss=%.1f%%  setpoint=%.1f C  pid=%.0f  sht=%s  hmi=%s\n",
                   stateName(getDryerState()),
                   (float)CURRENT_TEMPERATURE,
                   CURRENT_HUMIDITY,
@@ -101,6 +104,7 @@ void loop() {
                   getWaterLoss(),
                   TEMPERATURE_SETPOINT,
                   PID_OUTPUT,
+                  sht,
                   hmiReachable ? "reachable" : "not seen");
   }
 }

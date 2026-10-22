@@ -13,9 +13,6 @@ static lv_obj_t* tempSensorDot = NULL;
 static lv_obj_t* tempSensorText = NULL;
 static lv_obj_t* loadCellDot = NULL;
 static lv_obj_t* loadCellText = NULL;
-static lv_obj_t* fanCurrentLabel = NULL;
-static lv_obj_t* heaterPowerLabel = NULL;
-static lv_obj_t* batteryLabel = NULL;
 static lv_obj_t* i2cLabel = NULL;
 static lv_obj_t* connStatusLabel = NULL;
 static lv_obj_t* lastUpdateLabel = NULL;
@@ -288,23 +285,6 @@ lv_obj_t* createDiagnosticsScreen() {
     lv_obj_set_style_bg_opa(sep1, LV_OPA_COVER, 0);
     lv_obj_set_style_border_width(sep1, 0, 0);
 
-    // Power readings
-    lv_obj_t* powerTitle = lv_label_create(leftCard);
-    lv_label_set_text(powerTitle, "POWER READINGS");
-    lv_obj_add_style(powerTitle, &style_text_label, 0);
-    lv_obj_set_style_text_letter_space(powerTitle, 2, 0);
-
-    fanCurrentLabel = createInfoRow(leftCard, "Fan Current", "--- A");
-    heaterPowerLabel = createInfoRow(leftCard, "Heater Power", "--- W");
-    batteryLabel = createInfoRow(leftCard, "Battery Voltage", "--- V");
-
-    // Separator
-    lv_obj_t* sep2 = lv_obj_create(leftCard);
-    lv_obj_set_size(sep2, LV_PCT(100), 1);
-    lv_obj_set_style_bg_color(sep2, COLOR_BORDER, 0);
-    lv_obj_set_style_bg_opa(sep2, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(sep2, 0, 0);
-
     // I2C device status
     lv_obj_t* i2cTitle = lv_label_create(leftCard);
     lv_label_set_text(i2cTitle, "I2C DEVICES");
@@ -312,6 +292,11 @@ lv_obj_t* createDiagnosticsScreen() {
     lv_obj_set_style_text_letter_space(i2cTitle, 2, 0);
 
     i2cLabel = createInfoRow(leftCard, "SHT31 Sensor", "not detected");
+
+    // Run test button — lives with the sensors it exercises
+    lv_obj_t* testBtn = createButton(leftCard, LV_SYMBOL_REFRESH "  RUN SENSOR TEST",
+                                      LV_PCT(100), 55, &style_btn_primary);
+    lv_obj_add_event_cb(testBtn, runTestCb, LV_EVENT_CLICKED, NULL);
 
     // ============ Right column: System Info ============
     lv_obj_t* rightCard = createCard(content, 370, 430);
@@ -327,32 +312,6 @@ lv_obj_t* createDiagnosticsScreen() {
     lastUpdateLabel = createInfoRow(rightCard, "Last Update", "Never");
     uptimeLabel = createInfoRow(rightCard, "HMI Uptime", "0:00:00");
     freeHeapLabel = createInfoRow(rightCard, "Free Heap", "--- KB");
-
-    // Firmware info (static)
-    createInfoRow(rightCard, "HMI Version", "v2.0.0");
-    createInfoRow(rightCard, "Display", "800x480 RGB");
-    lv_obj_t* lvglVersionLabel = createInfoRow(rightCard, "LVGL Version", "");
-    lv_label_set_text_fmt(lvglVersionLabel, "v%d.%d.%d", LVGL_VERSION_MAJOR, LVGL_VERSION_MINOR, LVGL_VERSION_PATCH);
-
-    // Separator
-    lv_obj_t* sep3 = lv_obj_create(rightCard);
-    lv_obj_set_size(sep3, LV_PCT(100), 1);
-    lv_obj_set_style_bg_color(sep3, COLOR_BORDER, 0);
-    lv_obj_set_style_bg_opa(sep3, LV_OPA_COVER, 0);
-    lv_obj_set_style_border_width(sep3, 0, 0);
-
-    // Spacer
-    lv_obj_t* spacer = lv_obj_create(rightCard);
-    lv_obj_set_flex_grow(spacer, 1);
-    lv_obj_set_style_bg_opa(spacer, LV_OPA_TRANSP, 0);
-    lv_obj_set_style_border_width(spacer, 0, 0);
-    lv_obj_set_scrollbar_mode(spacer, LV_SCROLLBAR_MODE_OFF);
-    lv_obj_set_width(spacer, 1);
-
-    // Run test button
-    lv_obj_t* testBtn = createButton(rightCard, LV_SYMBOL_REFRESH "  RUN SENSOR TEST",
-                                      LV_PCT(100), 55, &style_btn_primary);
-    lv_obj_add_event_cb(testBtn, runTestCb, LV_EVENT_CLICKED, NULL);
 
     return scr;
 }
@@ -399,17 +358,6 @@ void updateDiagnosticsScreen() {
     if (lv_obj_is_valid(loadCellDot) && lv_obj_is_valid(loadCellText)) {
         updateSensorDot(loadCellDot, dryerData.loadCellStatus);
         lv_label_set_text(loadCellText, sensorStatusText(dryerData.loadCellStatus));
-    }
-
-    // Power readings
-    if (lv_obj_is_valid(fanCurrentLabel)) {
-        { char _b[12]; snprintf(_b, sizeof(_b), "%.2f A", dryerData.fanCurrent); lv_label_set_text(fanCurrentLabel, _b); }
-    }
-    if (lv_obj_is_valid(heaterPowerLabel)) {
-        { char _b[12]; snprintf(_b, sizeof(_b), "%.0f W", dryerData.heaterPower); lv_label_set_text(heaterPowerLabel, _b); }
-    }
-    if (lv_obj_is_valid(batteryLabel)) {
-        { char _b[12]; snprintf(_b, sizeof(_b), "%.1f V", dryerData.batteryVoltage); lv_label_set_text(batteryLabel, _b); }
     }
 
     // I2C

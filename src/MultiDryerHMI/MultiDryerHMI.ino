@@ -1,4 +1,5 @@
 #include <Arduino.h>
+#include <esp_mac.h>
 #include <esp_display_panel.hpp>
 #include <lvgl.h>
 #include "lvgl_v8_port.h"
@@ -26,7 +27,18 @@ static void uiUpdateTimerCb(lv_timer_t* timer) {
 
 void setup() {
     Serial.begin(115200);
+    delay(200);   // let the USB-CDC port settle before the first log lines
     Serial.println("=== Multi Dryer HMI ===");
+
+    // Print the factory MAC as early as possible — this works before the Wi-Fi
+    // driver is up, so the pairing info still appears if display init fails.
+    {
+        uint8_t mac[6] = { 0 };
+        if (esp_read_mac(mac, ESP_MAC_WIFI_STA) == ESP_OK) {
+            Serial.printf("[HMI] MAC (factory): %02X:%02X:%02X:%02X:%02X:%02X\n",
+                          mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+        }
+    }
 
     // Initialize dryer data with defaults
     initDryerData();

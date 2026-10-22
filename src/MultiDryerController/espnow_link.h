@@ -9,8 +9,8 @@
 //
 // MAC setup:
 //   1. Boot the controller, read "[ESP-NOW] Controller MAC: XX:XX:XX:XX:XX:XX"
-//   2. Paste that MAC into NODEMCU_PEER_MAC in the HMI's serial_protocol.cpp
-//   3. Boot the HMI, read its "NodeMCU peer MAC" print
+//   2. Paste that MAC into CONTROLLER_PEER_MAC in the HMI's serial_protocol.cpp
+//   3. Boot the HMI, read its "[HMI] HMI MAC" print
 //   4. Paste that MAC into HMI_PEER_MAC below, re-flash the controller
 
 #ifndef ESPNOW_LINK_H
@@ -18,6 +18,8 @@
 
 #include <WiFi.h>
 #include <esp_now.h>
+#include <esp_wifi.h>
+#include <esp_mac.h>
 #include "espnow_protocol.h"
 #include "PINS_CONFIG.h"
 #include "SHT31_CONFIG.h"
@@ -26,7 +28,7 @@
 #include "DRYER_STATE.h"
 
 // ── HMI peer MAC — UPDATE with the MAC printed by the HMI on boot ─────────────
-static uint8_t HMI_PEER_MAC[6] = { 0x00, 0x00, 0x00, 0x00, 0x00, 0x00 };
+static uint8_t HMI_PEER_MAC[6] = { 0x28, 0x84, 0x85, 0x55, 0xC0, 0xC8 };
 
 // ── Link state ────────────────────────────────────────────────────────────────
 // hmiReachable is written from the ESP-NOW send callback (Wi-Fi task context)
@@ -75,7 +77,10 @@ static bool cmdDequeue(uint8_t* type, float* value) {
 static void handleCmd(uint8_t cmdType, float value);
 
 // ── Receive callback (Wi-Fi task context — keep it short) ─────────────────────
-static void onEspNowReceive(const uint8_t* mac, const uint8_t* data, int len) {
+// ESP32 Arduino core 3.x / IDF 5.x passes an esp_now_recv_info_t*, which holds
+// the source MAC in info->src_addr. We only talk to one known peer, so it is unused.
+static void onEspNowReceive(const esp_now_recv_info_t* info, const uint8_t* data, int len) {
+    (void)info;
     if (len < (int)sizeof(EspNowCmdPacket)) return;
     const EspNowCmdPacket* pkt = (const EspNowCmdPacket*)data;
     if (!espnowCmdValid(pkt)) {
@@ -116,30 +121,67 @@ static void sendStatusNow() {
     esp_now_send(HMI_PEER_MAC, (const uint8_t*)&pkt, sizeof(pkt));
 }
 
+// ── MAC helpers ───────────────────────────────────────────────────────────────
+static bool macIsZero(const uint8_t mac[6]) {
+    static const uint8_t zero[6] = { 0, 0, 0, 0, 0, 0 };
+    return memcmp(mac, zero, 6) == 0;
+}
+
+// Read this board's STA MAC. WiFi.macAddress() on core 3.x reads the *base* MAC
+// through esp_base_mac_addr_get() and can come back as 00:00:00:00:00:00 if the
+// Wi-Fi driver is not ready yet (or the eFuse read fails). Ask the running Wi-Fi
+// driver first, then fall back to the factory MAC in eFuse.
+static bool readStaMac(uint8_t mac[6]) {
+    memset(mac, 0, 6);
+    if (esp_wifi_get_mac(WIFI_IF_STA, mac) == ESP_OK && !macIsZero(mac)) {
+        return true;
+    }
+    memset(mac, 0, 6);
+    if (esp_read_mac(mac, ESP_MAC_WIFI_STA) == ESP_OK && !macIsZero(mac)) {
+        return true;
+    }
+    return false;
+}
+
 // ── Init (call once in setup()) ───────────────────────────────────────────────
 void initEspNow() {
     // Wi-Fi must be in STA mode (no connection) for ESP-Now
     WiFi.mode(WIFI_STA);
     WiFi.disconnect();
 
-    // Print own MAC so user can copy it into the HMI's NODEMCU_PEER_MAC
-    Serial.printf("[ESP-NOW] Controller MAC (copy to HMI CONTROLLER_PEER_MAC): %s\n",
-                  WiFi.macAddress().c_str());
-
     if (esp_now_init() != ESP_OK) {
         Serial.println("[ESP-NOW] Init FAILED");
         return;
     }
 
+    // Print own MAC so user can copy it into the HMI's CONTROLLER_PEER_MAC.
+    // Done AFTER esp_now_init() so the Wi-Fi driver is up and the MAC is valid.
+    uint8_t ownMac[6];
+    if (readStaMac(ownMac)) {
+        Serial.printf("[ESP-NOW] Controller MAC (copy to HMI CONTROLLER_PEER_MAC): "
+                      "%02X:%02X:%02X:%02X:%02X:%02X\n",
+                      ownMac[0], ownMac[1], ownMac[2], ownMac[3], ownMac[4], ownMac[5]);
+    } else {
+        Serial.println("[ESP-NOW] MAC read FAILED — cannot pair boards");
+    }
+
     esp_now_register_recv_cb(onEspNowReceive);
     esp_now_register_send_cb(onEspNowSent);
+
+    if (macIsZero(HMI_PEER_MAC)) {
+        // Receive still works without a peer entry on ESP32, so the HMI can
+        // still reach us. But we have nowhere to send status packets.
+        Serial.println("[ESP-NOW] HMI_PEER_MAC is NOT set (00:00:00:00:00:00)");
+        Serial.println("[ESP-NOW] → put the HMI MAC in espnow_link.h and re-flash this board");
+        return;
+    }
 
     esp_now_peer_info_t peerInfo = {};
     memcpy(peerInfo.peer_addr, HMI_PEER_MAC, 6);
     peerInfo.channel = ESPNOW_WIFI_CHANNEL;
     peerInfo.encrypt = false;
     if (esp_now_add_peer(&peerInfo) != ESP_OK) {
-        Serial.println("[ESP-NOW] Add peer FAILED — is HMI_PEER_MAC set?");
+        Serial.println("[ESP-NOW] Add peer FAILED — is HMI_PEER_MAC valid?");
     }
 
     Serial.printf("[ESP-NOW] Link ready. HMI peer: %02X:%02X:%02X:%02X:%02X:%02X\n",
