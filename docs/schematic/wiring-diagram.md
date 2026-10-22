@@ -10,6 +10,10 @@ The canonical schematic is maintained in Fritzing:
 
 > The `.fzz` is the source of truth for the schematic. Re-export the PNG
 > (`File → Export → PNG`) after every edit and commit both together.
+>
+> Pin numbers are defined in `src/MultiDryerController/PINS_CONFIG.h` and listed
+> in [`hardware-wiring.md`](hardware-wiring.md) — if the drawing disagrees with
+> those, the firmware map wins (update the Fritzing file to match).
 
 ## Interactive schematic (secondary)
 
@@ -51,14 +55,14 @@ Edit the project in the Cirkit Designer editor, then save + re-share the link.
           └─[F3  2A]── SSR4 ── Exhaust Fan ───────────────────┘
    ```
 2. **SSR inputs (3.3 V logic)** — SSR(+) → GPIO, SSR(−) → GND:
-   - SSR1 → **GPIO 26** (heater)
-   - SSR3 → **GPIO 27** (inlet fan)
-   - SSR4 → **GPIO 13** (exhaust fan)
-   - **GPIO 25 no longer wired to anything** (old SSR2 pin, now spare)
+   - SSR1 → **GPIO 25** (heater)
+   - SSR3 → **GPIO 26** (inlet fan)
+   - SSR4 → **GPIO 27** (exhaust fan)
+   - **GPIO 13 is now spare** (previous exhaust-fan SSR line)
 3. **HX711 + load cells** — four cells paralleled into one HX711:
    - Each cell: Red→E+, Black→E−, Green→A+, White→A−, Shield→GND (all E+/E−/A+/A− tied together)
    - HX711: DOUT→**GPIO 35**, SCK→**GPIO 32**, VCC→**3V3**, GND→GND
-4. **SHT31** — SDA→**GPIO 21**, SCL→**GPIO 22**, VIN→3V3, GND→GND (addr 0x44)
+4. **SHT31** — SDA→**GPIO 21**, SCL→**GPIO 22**, VIN→3V3, GND→GND (firmware auto-detects 0x44/0x45)
 5. **Power** — 220 VAC → PSU → **12 V rail** → buck converter input; buck output
    **5 V** → ESP32 **5V** pin (onboard regulator makes 3.3 V). Common ground:
    12 V PSU GND → buck GND → ESP32 GND → HX711 GND.
@@ -66,7 +70,7 @@ Edit the project in the Cirkit Designer editor, then save + re-share the link.
 ### Verify after editing
 
 - Only 3 SSR devices in the parts list; no exhaust-outlet branch or 5 A fuse.
-- GPIO 26/27/13 drive the three SSRs; GPIO 25 unconnected.
+- GPIO 25/26/27 drive the three SSRs; GPIO 13 is unconnected.
 - Heater branch: `F1 10A → thermal cutoff → SSR1 → PTC heater (1500 W)`.
 - Low-voltage side: PSU → 12 V → buck → 5 V → ESP32.
 

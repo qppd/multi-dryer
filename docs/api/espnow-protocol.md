@@ -139,12 +139,38 @@ Bitmask in `EspNowStatusPacket.flags` — reflects the **real SSR output state**
 
 ## 7. Pairing (one-time)
 
-1. Boot the controller → note its MAC (`[ESP-NOW] Controller MAC: …`).
-2. Paste it into `CONTROLLER_PEER_MAC` in `src/MultiDryerHMI/serial_protocol.cpp`.
-3. Boot the HMI → note its MAC.
-4. Paste it into `HMI_PEER_MAC` in `src/MultiDryerController/espnow_link.h`, re-flash.
+1. Boot the controller → copy the line
+   `[ESP-NOW] Controller MAC (copy to HMI CONTROLLER_PEER_MAC): XX:XX:XX:XX:XX:XX`.
+2. Paste it into `CONTROLLER_PEER_MAC` in `src/MultiDryerHMI/serial_protocol.cpp`, re-flash the HMI.
+3. Boot the HMI → copy `[HMI] HMI MAC (paste into controller HMI_PEER_MAC): XX:XX:XX:XX:XX:XX`
+   (the same address is also printed early as `[HMI] MAC (factory)`).
+4. Paste it into `HMI_PEER_MAC` in `src/MultiDryerController/espnow_link.h`, re-flash the controller.
+
+Expected serial output when paired:
+
+```
+[ESP-NOW] Controller MAC (copy to HMI CONTROLLER_PEER_MAC): 68:09:47:9A:B8:D0
+[ESP-NOW] Link ready. HMI peer: 28:84:85:55:C0:C8
+```
+
+```
+[HMI] MAC (factory): 28:84:85:55:C0:C8
+[HMI] HMI MAC (paste into controller HMI_PEER_MAC): 28:84:85:55:C0:C8
+[ESP-Now] esp_now_init OK
+[HMI] ESP-Now ready. Controller peer: 68:09:47:9A:B8:D0
+```
 
 No packets flow until both MACs are configured. Both must be on channel 1.
+
+> **Zero-MAC guard:** a peer of `00:00:00:00:00:00` is treated as *not
+> configured*. The firmware logs `..._PEER_MAC is NOT set` and skips
+> `esp_now_add_peer` instead of claiming the link is ready. Receiving still
+> works on the controller (so the HMI can reach it), but no status packets are
+> sent back.
+>
+> **Checked-in values:** the repo ships with one bench pair already filled in
+> (`HMI_PEER_MAC`, `CONTROLLER_PEER_MAC`). Replace both when flashing different
+> boards — MACs are per-module and not secret.
 
 ---
 

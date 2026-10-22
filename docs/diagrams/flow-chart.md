@@ -10,7 +10,7 @@ Control-flow diagrams (Mermaid — renders on GitHub).
 flowchart TD
     A["Power on / reset"] --> B["setup()<br/>1. SSR pins forced LOW (fail-safe)"]
     B --> C["2. initLoadCell() — HX711<br/>restore calibration factor from NVS"]
-    C --> D["3. initSHT31() — I2C<br/>temp/humidity, presence check"]
+    C --> D["3. initSHT31() — I2C @100 kHz<br/>auto-detect 0x44 / 0x45<br/>(Adafruit_SHT31, soft reset)"]
     D --> E["4. initPID() — MANUAL (off)"]
     E --> F["5. initDrying() — restore<br/>session + config from NVS"]
     F --> G["6. initEspNow() — pair peer<br/>+ register callbacks"]
@@ -29,7 +29,7 @@ flowchart TD
 
 ```mermaid
 flowchart TD
-    A["loop()"] --> B["updateSHT31()<br/>non-blocking sensor read<br/>state machine"]
+    A["loop()"] --> B["updateSHT31()<br/>rate-limited 2 s poll<br/>(readBoth, re-probe after 3 fails)"]
     B --> C["pidCOMPUTE()<br/>heat or vent — SHT31 vent guard<br/>(PID_v1 throttles to 2 s)"]
     C --> D["updateDrying()<br/>1 Hz tick — weight cache, water loss,<br/>EDT, auto-complete, session save"]
     D --> E["espnowUpdate()<br/>dequeue 1 cmd + 1 Hz status"]

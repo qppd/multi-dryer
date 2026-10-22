@@ -35,9 +35,9 @@ flowchart TB
     end
 
     subgraph SSR["SSR Bank — 3× SSR-40DA 40 A (3–32 VDC in)"]
-        R1["SSR1 — PTC heater<br/>(GPIO 26)"]
-        R3["SSR3 — inlet fan<br/>(GPIO 27)"]
-        R4["SSR4 — exhaust fan<br/>(GPIO 13)"]
+        R1["SSR1 — PTC heater<br/>(GPIO 25)"]
+        R3["SSR3 — inlet fan<br/>(GPIO 26)"]
+        R4["SSR4 — exhaust fan<br/>(GPIO 27)"]
     end
 
     subgraph LOADS["AC Loads"]
@@ -95,5 +95,5 @@ flowchart TB
 | Thermal cutoff | Mandatory, in series with the PTC heater branch |
 | SSR bank | 3× SSR-40DA 40 A (SSR1 heater, SSR3 inlet, SSR4 exhaust); opto-isolated 3–32 VDC input; firmware forces inputs LOW at boot |
 | ESP-NOW | Wireless, channel 1, packed binary packets — `espnow_protocol.h` is byte-identical on both boards (see `api/espnow-protocol.md`) |
-| Sensors | SHT31 on I2C; HX711 fully digital (no ADC2 dependence) |
+| Sensors | SHT31 on I2C (Adafruit_SHT31, 2 s poll, 0x44/0x45 auto-detect); HX711 fully digital (no ADC2 dependence) |
 | HMI | ESP32-S3 + 7″ RGB LCD (ST7262) + GT911 touch; LVGL 8.x; 6 screens (boot, dashboard, control, analytics, diagnostics, HOW TO USE); drying presets in NVS; optimistic button feedback; alerts |

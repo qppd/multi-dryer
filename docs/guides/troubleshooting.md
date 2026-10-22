@@ -15,18 +15,24 @@ Systematic fixes for the most common Multi Dryer problems. Each section follows
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| HMI dashboard stuck on `--` / stale values | Peer MACs are still the zero placeholders `{0x00,…}` | Complete the 4-step pairing (§1.2) |
-| Controller logs `Add peer FAILED — is HMI_PEER_MAC set?` | `HMI_PEER_MAC` (controller `espnow_link.h`) not pasted | Paste the HMI's MAC, re-flash the controller |
-| Controller logs `[ESP-NOW] Send failed — check CONTROLLER_PEER_MAC` | `CONTROLLER_PEER_MAC` (HMI `serial_protocol.cpp`) not pasted | Paste the controller's MAC, re-flash the HMI |
+| HMI dashboard stuck on `--` / stale values | Peer MACs not set, or set to the wrong board | Complete the 4-step pairing (§1.2) |
+| Controller logs `[ESP-NOW] HMI_PEER_MAC is NOT set` | `HMI_PEER_MAC` (controller `espnow_link.h`) not pasted | Paste the HMI's MAC, re-flash the controller |
+| Controller logs `[ESP-NOW] Add peer FAILED — is HMI_PEER_MAC valid?` | `HMI_PEER_MAC` has an invalid/all-zero value | Re-copy the HMI MAC |
+| HMI logs `[ESP-Now] CONTROLLER_PEER_MAC is NOT set` | `CONTROLLER_PEER_MAC` (HMI `serial_protocol.cpp`) not pasted | Paste the controller's MAC, re-flash the HMI |
+| HMI logs `[ESP-Now] Send failed — check CONTROLLER_PEER_MAC` | Controller MAC wrong, or controller is off/out of range | Re-check the controller MAC; both boards on channel 1 |
+| Serial prints `MAC: 00:00:00:00:00:00 (READ FAILED)` | Wi-Fi driver not ready or eFuse read failed | Power-cycle; firmware already retries `esp_wifi_get_mac()` then `esp_read_mac()` |
 | Both MACs set, still nothing | Channel mismatch | Both must use `ESPNOW_WIFI_CHANNEL` (default 1) |
 | Works at bench, fails in the field | ESP-NOW is same-channel-only; both boards on a network's other channel | Keep both off Wi-Fi or set the channel to match |
 
 ### 1.2 The pairing procedure (one-time)
 
-1. Boot the controller → read `[ESP-NOW] Controller MAC: XX:…`.
-2. Paste it into `CONTROLLER_PEER_MAC` in `src/MultiDryerHMI/serial_protocol.cpp`.
-3. Boot the HMI → read its MAC.
-4. Paste it into `HMI_PEER_MAC` in `src/MultiDryerController/espnow_link.h`, re-flash.
+1. Boot the controller → copy `[ESP-NOW] Controller MAC (copy to HMI CONTROLLER_PEER_MAC): XX:…`.
+2. Paste it into `CONTROLLER_PEER_MAC` in `src/MultiDryerHMI/serial_protocol.cpp`, re-flash the HMI.
+3. Boot the HMI → copy `[HMI] HMI MAC (paste into controller HMI_PEER_MAC): XX:…` (also printed early as `[HMI] MAC (factory)`).
+4. Paste it into `HMI_PEER_MAC` in `src/MultiDryerController/espnow_link.h`, re-flash the controller.
+
+The checked-in firmware already has one bench pair's MACs — replace both when
+flashing different boards.
 
 **Diagnose:** both serial monitors should show clean sends. The controller's
 `hmiReachable` flag turns true when the HMI ACKs. Expect a `[STATUS]`/status
@@ -49,10 +55,13 @@ lost, the heater can never run at full power.
 
 | Observation | Meaning | Action |
 |---|---|---|
-| `FLAG_SHT31` clears on the HMI | SHT31 not reporting valid data | Check I2C wiring (SDA→21, SCL→22), pull-ups, address (0x44 / 0x45) |
+| `FLAG_SHT31` clears on the HMI | SHT31 not reporting valid data | Check I2C wiring (SDA→21, SCL→22) and pull-ups; firmware auto-probes 0x44 then 0x45 |
+| `[STATUS] … sht=MISSING` | No sensor answered at either address | Read the `[SHT31] I2C scan:` line — a device at 0x44/0x45 points to a driver issue; no devices means wiring/power |
+| `[SHT31] NO SENSOR — check SDA/SCL, 3.3 V and ADDR strap` | Sensor unpowered, SDA/SCL swapped, or bad lead | Re-seat, verify 3V3 + GND, check the I2C scan output |
+| `[SHT31] Sensor ready at 0x45` | ADDR pin tied HIGH (module variant) | Normal — no change needed; the status line shows `sht=0x45` |
 | Heater + inlet fan off, **exhaust fan on** while in DRYING | Vent guard active — `pidCOMPUTE()` sees `!sht31OK` | Fix the sensor; the unit is intentionally venting instead of heating |
-| `[STATUS]` shows `temp=0` or stale temp | Sensor read failing or hung bus | Re-seat the SHT31; power-cycle the controller |
-| Serial shows CRC errors | Bad wiring / noise on I2C | Shorten leads, keep I2C wiring away from AC wiring |
+| `[STATUS]` shows stale temp | Sensor dropped off the bus | Firmware re-probes after 3 consecutive failures; check wiring if it persists |
+| Temperature jumps / noise | Long or noisy I2C leads near AC wiring | Shorten leads, keep I2C wiring away from AC wiring |
 
 > **Rule:** a dead sensor must never cause full-power heating. If you see the
 > heater ON with no valid temperature, something is wrong with the vent-guard
@@ -107,6 +116,8 @@ Full procedure: [`calibration-guide.md`](calibration-guide.md).
 | Symptom | Likely cause | Fix |
 |---|---|---|
 | Display stays black / splash only | Board config mismatch | `esp_panel_board_custom_conf.h` is **Waveshare ESP32-S3-Touch-LCD-7** specific — verify against your actual board, or display/touch init fails silently |
+| HMI build fails: `text section exceeds available space` | Default 1.25 MB app partition is too small (~1.45 MB sketch) | Select **16M Flash (3MB APP)** / `PartitionScheme=huge_app` |
+| Preset keyboard covers the form | Old firmware built the keyboard visible | Current firmware hides it until the name field is tapped; close with ✓/✗ or the title-bar **X** |
 | Touch unresponsive but display works | GT911 config wrong for your panel | Check the touch I2C pins / reset in the board config |
 | UI janky after a button press | Blocking `delay()` in an LVGL callback | Keep callbacks short (the dashboard quick-start uses small 50 ms gaps by design) |
 

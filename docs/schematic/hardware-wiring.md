@@ -11,21 +11,22 @@ Design goal: every pin on the controller is **boot-safe** (no strapping/flash/bo
 
 | Function | GPIO | Board label | Notes |
 |---|---|---|---|
-| **SSR1 — PTC heater** (power stage) | **26** | D26 | clean digital output |
-| **SSR3 — inlet air fan** | **27** | D27 | clean digital output |
-| **SSR4 — exhaust fan** | **13** | D13 | clean digital output |
+| **SSR1 — PTC heater** (power stage) | **25** | D25 | clean digital output |
+| **SSR3 — inlet air fan** | **26** | D26 | clean digital output |
+| **SSR4 — exhaust fan** | **27** | D27 | clean digital output |
 | **HX711 — DOUT** (load cell data) | **35** | D35 | input-only pin — perfect (read-only) |
 | **HX711 — SCK** (load cell clock) | **32** | D32 | clean digital output |
-| **SHT31 — temp/humidity (I2C)** | **21 (SDA), 22 (SCL)** | | hardware I2C; temp feedback for PID (FishDryer baseline); driver: `SHT31_CONFIG.h` |
-| Spare digital | 16, 17, 18, 19, 23, 25, 33 | | 16/17 = WROOM-32 only (PSRAM on WROVER); 18/19/23 = default VSPI; 25 = freed ex-SSR2 pin |
+| **SHT31 — temp/humidity (I2C)** | **21 (SDA), 22 (SCL)** | | hardware I2C @100 kHz; temp feedback for PID (FishDryer baseline); driver: `SHT31_CONFIG.h` (0x44/0x45 auto-detect) |
+| Spare digital | 13, 16, 17, 18, 19, 23, 33 | | 16/17 = WROOM-32 only (PSRAM on WROVER); 18/19/23 = default VSPI; 13 = freed (previous exhaust-SSR line) |
 | Spare input-only | 34, 36, 39 | | future analog sensors (ADC1, WiFi-safe) |
 | **Avoid — strapping pins** | 0, 2, 4, 5, 12, 15 | | see §3.1 |
 | **Avoid — flash pins** | 6, 7, 8, 9, 10, 11 | | connected to SPI flash inside module |
 | **Avoid — UART0** | 1 (TX), 3 (RX) | | USB-serial for flashing/debug only |
 
-> Only **3 SSRs** in this build: SSR1 (heater), SSR3 (inlet fan), SSR4 (exhaust
-> fan). The exhaust outlet was dropped — venting is done by the exhaust fan
-> (SSR4), and GPIO 25 (the old SSR2 pin) is free as spare digital.
+> Only **3 SSRs** in this build: SSR1 (heater, GPIO 25), SSR3 (inlet fan,
+> GPIO 26), SSR4 (exhaust fan, GPIO 27). The exhaust outlet was dropped —
+> venting is done by the exhaust fan (SSR4), and GPIO 13 (the previous exhaust
+> SSR line) is now free as spare digital.
 >
 > **Do not connect anything to GPIO 14** for outputs: it emits a PWM burst at boot (would glitch an SSR). GPIO 1/3 also drive HIGH at boot — keep them free for the serial monitor.
 
@@ -92,10 +93,14 @@ Controller (ESP32 38-pin)          HMI (ESP32-S3 + touch)
 - **No signal wires between the boards.** Protocol header `src/MultiDryerController/espnow_protocol.h` is byte-identical to the HMIDisplay reference, so the two sides interoperate as-is.
 - Controller link driver: `src/MultiDryerController/espnow_link.h` — sends **EspNowStatusPacket** at 1 Hz carrying state, SHT31 temp/humidity, load cell weight (kg), water loss, setpoint, PID output, runtime and EDT; receives **EspNowCmdPacket** commands — the full protocol set (drying control, PID, calibration, manual overrides) is implemented.
 - **MAC setup (one-time):**
-  1. Boot controller → serial prints `Controller MAC: XX:…`
+  1. Boot controller → serial prints `[ESP-NOW] Controller MAC (copy to HMI CONTROLLER_PEER_MAC): XX:…`
   2. Paste into `CONTROLLER_PEER_MAC` in the HMI's `src/MultiDryerHMI/serial_protocol.cpp`
-  3. Boot HMI → serial prints `Controller peer MAC: YY:…`
+  3. Boot HMI → serial prints `[HMI] HMI MAC (paste into controller HMI_PEER_MAC): YY:…`
   4. Paste into `HMI_PEER_MAC` in the controller's `espnow_link.h`, re-flash controller
+
+  The repo ships with one bench pair's MACs filled in — replace both when
+  flashing different boards. An all-zero peer is detected and reported instead
+  of being silently added.
 - Set both to the same channel (`ESPNOW_WIFI_CHANNEL`, default 1).
 - **ESP-NOW is the ONLY board-to-board transport** — no UART and no I2C between controller and HMI (decision 2026-08-07). GPIO 16/17 stay free, and the SHT31 owns the I2C bus.
 - The serial (UART0) ports of both boards are used **only** for local flashing/debug, never for inter-board comms.
@@ -106,7 +111,7 @@ Controller (ESP32 38-pin)          HMI (ESP32-S3 + touch)
 SHT31  SDA ── GPIO 21      SHT31  SCL ── GPIO 22      VIN ── 3V3      GND ── GND
 ```
 
-- Address **0x44** (0x45 if ADDR tied HIGH). Driver: `src/MultiDryerController/SHT31_CONFIG.h` (non-blocking state machine, CRC-8, ported from the FishDryer baseline onto the hardware I2C bus).
+- Address **0x44** (default) or **0x45** (ADDR tied HIGH) — the firmware probes both at boot and re-probes after 3 failed reads. Driver: `src/MultiDryerController/SHT31_CONFIG.h` (**Adafruit_SHT31**, hardware I2C @100 kHz, 2 s poll, I2C bus scan logged on failure; CRC/status handled by the library).
 - Temp feedback feeds PTC control/PID, and temp/humidity are reported to the HMI over ESP-NOW.
 
 ---
@@ -185,7 +190,7 @@ GPIO 1/3 remain free → flashing and serial debugging always work with peripher
 | Inlet + exhaust fans | 220 VAC axial fans | 2 |
 | HX711 breakout | 24-bit ADC | 1 |
 | Load cells | 4 × 50 kg, 4-wire (summed bridge) | 4 |
-| SHT31 breakout | I2C temp/humidity, addr 0x44 | 1 |
+| SHT31 breakout | I2C temp/humidity, 0x44/0x45 auto-detect | 1 |
 | 220 VAC → 12 V PSU | 5 A (60 W) | 1 |
 | 12 V → 5 V buck converter | 3 A | 1 |
 | Fuses | 10 A / 2 A / 2 A | 3 |

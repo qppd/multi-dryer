@@ -26,7 +26,7 @@ multi-dryer/
 │   ├── MultiDryerController/   # ESP32 38-pin controller firmware (Arduino .ino + headers)
 │   │   ├── MultiDryerController.ino   # entry point: sensors → PID → state machine → ESP-NOW
 │   │   ├── PINS_CONFIG.h              # centralized, boot/WiFi-safe pin assignments
-│   │   ├── SHT31_CONFIG.h             # SHT31 temp/humidity driver (I2C, non-blocking, CRC-8)
+│   │   ├── SHT31_CONFIG.h             # SHT31/SHT30 driver (I2C via Adafruit_SHT31, 2 s poll, 0x44/0x45 auto-detect)
 │   │   ├── LOADCELL_CONFIG.h          # HX711 load cell driver (kg, TARE/CALIBRATE, NVS factor)
 │   │   ├── PID_CONFIG.h               # PID temperature control (PID_v1) + SHT31 vent guard
 │   │   ├── DRYER_STATE.h              # state machine, water-loss math, NVS session persistence
@@ -37,6 +37,7 @@ multi-dryer/
 │       ├── *_screen.cpp/.h            # boot, dashboard, control, manual operation,
 │       │                              # analytics, diagnostics + alert popup
 │       ├── serial_protocol.cpp/.h     # ESP-NOW transport to the controller
+│       ├── drying_presets.cpp/.h      # Named product presets persisted in HMI NVS
 │       ├── dryer_data.h               # data model bridged from status packets
 │       ├── lvgl_v8_port.* / ui_theme.h / ui_styles.* / screen_manager.*
 │       ├── ui_optimistic_state.*      # instant UI feedback, corrected by 1 Hz status
@@ -91,9 +92,9 @@ multi-dryer/
 
 | Function | GPIO |
 |---|---|
-| SSR1 — PTC heater | 26 |
-| SSR3 — inlet fan | 27 |
-| SSR4 — exhaust fan | 13 |
+| SSR1 — PTC heater | 25 |
+| SSR3 — inlet fan | 26 |
+| SSR4 — exhaust fan | 27 |
 | HX711 DOUT / SCK | 35 / 32 |
 | SHT31 SDA / SCL | 21 / 22 |
 
@@ -104,23 +105,26 @@ Full wiring plan: [`docs/schematic/hardware-wiring.md`](docs/schematic/hardware-
 ### Prerequisites
 
 **Controller** (`src/MultiDryerController`)
-- Arduino IDE or PlatformIO with **ESP32 Arduino core**
-- Libraries: [`br3ttb/PID_v1`](https://github.com/br3ttb/Arduino-PID-Library), [`bogde/HX711`](https://github.com/bogde/HX711) (`Preferences` is built-in)
+- Arduino IDE or PlatformIO with **ESP32 Arduino core 3.x** (built/tested on **3.0.5**)
+- Libraries: [`br3ttb/PID_v1`](https://github.com/br3ttb/Arduino-PID-Library), [`bogde/HX711`](https://github.com/bogde/HX711), [`adafruit/Adafruit_SHT31`](https://github.com/adafruit/Adafruit_SHT31) (`Preferences` and `Wire` are built-in)
 
 **HMI** (`src/MultiDryerHMI`)
 - **LVGL 8.x** (enable fonts *Montserrat 14/16/20/24/30/36/48* and widgets *meter/chart/bar/slider/switch/tabview/checkbox/spinner/keyboard/textarea* in `lv_conf.h`)
 - **ESP32_Display_Panel** library (`esp_display_panel.hpp`)
+- **A partition with a ≥ 3 MB app slot** (e.g. *16M Flash (3MB APP)* / `PartitionScheme=huge_app`). The sketch is ~1.45 MB, so the default 1.25 MB app partition fails with *"text section exceeds available space"*.
 - ⚠️ `esp_panel_board_custom_conf.h` is configured for the **Waveshare ESP32-S3-Touch-LCD-7** — verify it matches your display/touch hardware, or init will fail silently.
 
 ### Flashing
 
 1. Open the sketch folders (`src/MultiDryerController` / `src/MultiDryerHMI`) in the Arduino IDE, select the correct board, and upload.
 2. **Pair the boards** (one-time, both default to channel 1):
-   1. Boot the controller → note its MAC from the serial monitor.
-   2. Paste it into `CONTROLLER_PEER_MAC` in `src/MultiDryerHMI/serial_protocol.cpp`.
-   3. Boot the HMI → note its MAC.
+   1. Boot the controller → copy `[ESP-NOW] Controller MAC (copy to HMI CONTROLLER_PEER_MAC): XX:…`.
+   2. Paste it into `CONTROLLER_PEER_MAC` in `src/MultiDryerHMI/serial_protocol.cpp`, re-flash the HMI.
+   3. Boot the HMI → copy `[HMI] HMI MAC (paste into controller HMI_PEER_MAC): XX:…` (the same address is also printed early as `[HMI] MAC (factory)`).
    4. Paste it into `HMI_PEER_MAC` in `src/MultiDryerController/espnow_link.h`, re-flash the controller.
-3. Open the serial monitors — status packets should flow at 1 Hz once paired.
+
+   The checked-in firmware currently contains the bench pair's MACs — replace both when flashing different boards. An all-zero peer is treated as **not configured**: the firmware logs a warning and skips `esp_now_add_peer` instead of silently claiming the link is ready.
+3. Open the serial monitors — `[ESP-NOW] Link ready` / `[HMI] ESP-Now ready` plus 1 Hz status packets confirm pairing.
 
 ## How It Works
 

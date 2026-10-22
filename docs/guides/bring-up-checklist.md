@@ -17,7 +17,7 @@ each phase depends on the previous one. Tick boxes as you pass each check.
 - [ ] **0.4** Fuses fitted on every AC branch (10 A heater / 2 A / 2 A fans).
 - [ ] **0.5** Thermal cutoff wired **in series with the PTC heater** branch.
 - [ ] **0.6** Load cells (4 × 50 kg) wired as a summed full-bridge — each cell Red→E+, Black→E−, Green→A+, White→A−, Shield→GND; all E+/E−/A+/A− paralleled into the one HX711 channel.
-- [ ] **0.7** SHT31 on the I2C bus: SDA→21, SCL→22, VIN→3V3, GND→GND, addr 0x44 (0x45 if ADDR tied HIGH).
+- [ ] **0.7** SHT31 on the I2C bus: SDA→21, SCL→22, VIN→3V3, GND→GND; firmware auto-detects **0x44 or 0x45** (ADDR tied HIGH).
 - [ ] **0.8** Bench meter / clamp meter ready for AC-side output checks.
 
 ---
@@ -34,15 +34,15 @@ each phase depends on the previous one. Tick boxes as you pass each check.
 ### 1.2 Fail-safe test
 - [ ] **1.2a** After boot, measure each SSR input — must read **LOW** (firmware forces pins LOW at the top of `setup()`).
 - [ ] **1.2b** Heater and fans stay off during the ~1 s boot window (no SSR clicks).
-- [ ] **1.2c** Firmware forces SSR pins LOW first thing in `setup()` — verify no HIGH glitch on populated SSR pins GPIO 26/27/13.
+- [ ] **1.2c** Firmware forces SSR pins LOW first thing in `setup()` — verify no HIGH glitch on populated SSR pins GPIO 25/26/27.
 
 ### 1.3 Flash test (with peripherals attached)
 - [ ] **1.3a** `esptool.py chip-id` / Arduino upload **succeeds** with SSRs + HX711 + SHT31 all connected (proves no strapping pin is loaded down).
 - [ ] **1.3b** Repeat upload 3× — no download-mode traps.
 
 ### 1.4 Sensor tests
-- [ ] **1.4a** SHT31: serial shows plausible temp (~room temp) and humidity; `[SHT31] OK` (or the state-machine status line shows `temp=…`).
-- [ ] **1.4b** SHT31 CRC: no CRC failures in a 2-minute window.
+- [ ] **1.4a** SHT31: serial shows `[SHT31] Sensor ready at 0x44` (or `0x45`) and plausible temp (~room temp) / humidity.
+- [ ] **1.4b** SHT31 detection: `[STATUS]` line shows `sht=0x44` / `sht=0x45` (not `sht=MISSING`) over a 2-minute window.
 - [ ] **1.4c** Load cell: `TARE` via the HMI or serial command → weight ≈ 0.000 kg.
 - [ ] **1.4d** Load cell: `CALIBRATE:<kg>` with a known weight → reading tracks within ±2%.
 
@@ -50,17 +50,17 @@ each phase depends on the previous one. Tick boxes as you pass each check.
 
 ## Phase 2 — WiFi / ESP-NOW
 
-- [ ] **2.1** Controller serial prints `[ESP-NOW] Controller MAC: XX:…` and `Link ready`.
+- [ ] **2.1** Controller serial prints `[ESP-NOW] Controller MAC (copy to HMI CONTROLLER_PEER_MAC): XX:…` and `Link ready` (only when `HMI_PEER_MAC` is configured; otherwise it logs a clear "NOT set" warning).
 - [ ] **2.2** Run `WiFi.scanNetworks()` (or just leave ESP-NOW active) with all peripherals connected — **no hangs**, control still responsive (proves the ADC2/WiFi rule isn't violated).
 - [ ] **2.3** Note the controller MAC.
 
 ### 2.4 HMI pairing
-- [ ] **2.4a** Flash the HMI sketch (`src/MultiDryerHMI`) on the ESP32-S3 — display initializes (splash → boot screen).
-- [ ] **2.4b** HMI serial prints its own MAC.
+- [ ] **2.4a** Flash the HMI sketch (`src/MultiDryerHMI`) on the ESP32-S3 with a **≥3 MB app partition** (e.g. 16M Flash / 3MB APP) — display initializes (splash → boot screen).
+- [ ] **2.4b** HMI serial prints `[HMI] MAC (factory): XX:…` early and `[HMI] HMI MAC (paste into controller HMI_PEER_MAC): XX:…` after Wi-Fi starts.
 - [ ] **2.4c** Paste controller MAC into `CONTROLLER_PEER_MAC` (HMI `serial_protocol.cpp`), re-flash HMI.
 - [ ] **2.4d** Paste HMI MAC into `HMI_PEER_MAC` (controller `espnow_link.h`), re-flash controller.
 - [ ] **2.4e** Both serial monitors show clean sends; dashboard shows **live values** (temp/humidity/weight) updating ~1 Hz.
-- [ ] **2.4f** No `Add peer FAILED` / `Send failed — check …_PEER_MAC` messages.
+- [ ] **2.4f** No `Add peer FAILED`, `…_PEER_MAC is NOT set`, or `Send failed` messages.
 
 ---
 
@@ -114,7 +114,7 @@ each phase depends on the previous one. Tick boxes as you pass each check.
 |---|---|---|
 | Board stuck in download mode / won't boot | A strapping pin loaded down (0/2/4/5/12/15) | Check wiring on strapping pins; remove pull-ups |
 | SSR clicks at power-on | GPIO 14 used as an output (PWM burst at boot) | Move to a clean GPIO; never use GPIO 14 |
-| No SHT31 data | Wrong pins, wrong addr | Check SDA/SCL, try address 0x45 |
+| No SHT31 data | Wrong pins, wiring, or sensor unpowered | Check SDA/SCL (21/22), 3V3/GND; read the `[SHT31] I2C scan:` output — firmware auto-tries 0x44/0x45 |
 | Weight reads garbage / floats | HX711 offset drift or floating DOUT | `TARE`; ensure HX711 powered; check DOUT/SCK |
 | No status packets on HMI | Peer MACs not set / channel mismatch | Complete §2.4; both on channel 1 |
 | Heater never on | Setpoint 0 / SHT31 lost (vent guard) | Send `SET_TEMPERATURE`; check sensor |

@@ -11,7 +11,7 @@ and tooling.
 |---|---|---|
 | Controller MCU | **ESP32 38-pin DevKitC** (WROOM-32 module) | Runs the drying process: sensors, PID, state machine, ESP-NOW |
 | HMI MCU | **ESP32-S3** (Waveshare ESP32-S3-Touch-LCD-7) | 800×480 RGB LCD + GT911 capacitive touch, runs the LVGL UI |
-| Temperature/humidity | **SHT31** (I2C, addr 0x44) | Chamber feedback for PID + humidity reporting |
+| Temperature/humidity | **SHT31** (I2C, 0x44 default / 0x45 auto-detected) | Chamber feedback for PID + humidity reporting |
 | Weight | **HX711** 24-bit ADC + 4× 50 kg load cells (summed full-bridge, 200 kg) | Product weight → water-loss % |
 | Heating | **PTC heater** (1500 W) | Drying heat, switched by SSR1 |
 | Airflow | Inlet fan + exhaust fan (220 V AC) | Circulation & moisture venting, SSRs 3–4 |
@@ -32,11 +32,11 @@ Pin allocation: `src/MultiDryerController/PINS_CONFIG.h` · wiring plan:
 |---|---|
 | `MultiDryerController.ino` | Entry point: init order (pins → load cell → SHT31 → PID → drying → ESP-NOW), main loop |
 | `PINS_CONFIG.h` | Boot/WiFi-safe pin assignments |
-| `SHT31_CONFIG.h` | Non-blocking SHT31 driver, hardware I2C, CRC-8 |
+| `SHT31_CONFIG.h` | SHT31/SHT30 driver via **Adafruit_SHT31**, hardware I2C, 2 s poll, 0x44/0x45 auto-detect + re-probe |
 | `LOADCELL_CONFIG.h` | HX711 driver: kg readings, TARE/CALIBRATE, calibration factor in NVS |
 | `PID_CONFIG.h` | PID temperature control (PID_v1) + SHT31 vent safety guard |
 | `DRYER_STATE.h` | State machine, water-loss math, runtime/EDT, NVS session + config persistence |
-| `espnow_link.h` | ESP-NOW transport: 1 Hz status, 8-slot command ring buffer |
+| `espnow_link.h` | ESP-NOW transport: 1 Hz status, 8-slot command ring buffer, core 3.x receive callback, robust MAC read |
 | `espnow_protocol.h` | Shared protocol (byte-identical copy) |
 
 ### HMI — `src/MultiDryerHMI` (Arduino sketch, LVGL v8)
@@ -45,8 +45,9 @@ Pin allocation: `src/MultiDryerController/PINS_CONFIG.h` · wiring plan:
 |---|---|
 | `MultiDryerHMI.ino` | Entry point |
 | `boot_screen` / `dashboard_screen` / `control_screen` / `manual_operation_screen` / `analytics_screen` / `diagnostics_screen` / `alert_popup` | UI screens |
-| `serial_protocol.*` | ESP-NOW transport to the controller |
+| `serial_protocol.*` | ESP-NOW transport to the controller (core 3.x callback, retried MAC read) |
 | `dryer_data.h` | Data model bridged from status packets |
+| `drying_presets.*` | Named product presets (name + temp + water-loss target) in HMI NVS |
 | `ui_optimistic_state.*` | Instant button feedback, corrected by 1 Hz status |
 | `lvgl_v8_port.*`, `ui_theme.h`, `ui_styles.*`, `screen_manager.*` | LVGL port, theme, screen navigation |
 | `esp_panel_board_custom_conf.h` | Board config — **Waveshare-7″-specific, verify against real hardware** |
@@ -57,11 +58,19 @@ Pin allocation: `src/MultiDryerController/PINS_CONFIG.h` · wiring plan:
 
 | Library | Used by | Version / notes |
 |---|---|---|
-| **ESP32 Arduino core** | both | `WiFi`, `Preferences`, `Wire` (built-in) |
+| **ESP32 Arduino core** | both | **3.x** (tested on 3.0.5 / IDF 5.x); uses the `esp_now_recv_info_t` receive callback; `WiFi`, `Preferences`, `Wire` built in |
 | **PID_v1** (`br3ttb/Arduino-PID-Library`) | controller | PD tuning: KP 4.0, KI 0.0, KD 22.0 |
 | **HX711** (`bogde/HX711`) | controller | Reads + tare + offset management |
-| **LVGL 8.x** | HMI | Fonts Montserrat 14/16/20/24/30/36/48; widgets meter/chart/bar/slider/switch/tabview/checkbox/spinner |
+| **Adafruit_SHT31** (`adafruit/Adafruit_SHT31`) | controller | SHT3x driver (soft reset, `readBoth()`); CRC/status handled by the library |
+| **LVGL 8.x** | HMI | Fonts Montserrat 14/16/20/24/30/36/48; widgets meter/chart/bar/slider/switch/tabview/checkbox/spinner/keyboard/textarea |
 | **ESP32_Display_Panel** (`esp_display_panel.hpp`) | HMI | RGB LCD + GT911 touch init (Waveshare board config) |
+
+### 3.1 Build configuration
+
+| Target | FQBN / setting | Notes |
+|---|---|---|
+| Controller | `esp32:esp32:esp32` | ~71% flash on core 3.0.5 |
+| HMI | `esp32:esp32:esp32s3:FlashSize=16M,PartitionScheme=huge_app` | Needs a **≥3 MB app partition**; the sketch is ~1.45 MB and overflows the default 1.25 MB slot |
 
 ---
 
@@ -71,8 +80,9 @@ Pin allocation: `src/MultiDryerController/PINS_CONFIG.h` · wiring plan:
 - **Protocol:** packed binary structs + XOR checksum, defined in `espnow_protocol.h`
   (byte-identical on both sides). Full reference: `docs/api/espnow-protocol.md`.
 - **Cadence:** status 1 Hz; commands on-demand with an 8-slot receive queue.
-- **Persistence:** NVS (`Preferences`, namespace `drying`) for calibration factor,
-  session state, and last setpoint/water-loss target.
+- **Persistence:** NVS (`Preferences`) — controller namespaces `loadcell` (calibration
+  factor) and `drying` (session state, last setpoint/water-loss target); HMI
+  namespace `presets` (named drying presets).
 
 ---
 

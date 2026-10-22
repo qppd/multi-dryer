@@ -17,12 +17,12 @@ and the safety design [`safety-and-thermal.md`](safety-and-thermal.md).
 |---|---|---|---|---|
 | 1 | 1 | Controller board | **ESP32 38-pin DevKitC (WROOM-32)** | Verify module type — see §5.3 |
 | 2 | 1 | HMI board | **ESP32-S3 + 7″ touch LCD (Waveshare ESP32-S3-Touch-LCD-7)** | 800×480 RGB + GT911; board config must match |
-| 3 | 3 | Solid-state relay | **SSR-40DA, 40 A — 3–32 VDC input / 220 VAC output** | SSR1 = heater, SSR3 = inlet fan, SSR4 = exhaust fan (wiring §1) |
+| 3 | 3 | Solid-state relay | **SSR-40DA, 40 A — 3–32 VDC input / 220 VAC output** | SSR1 = heater (GPIO 25), SSR3 = inlet fan (26), SSR4 = exhaust fan (27); see wiring §1 |
 | 4 | 1 | Heater | **PTC heater, 1500 W** | Switched by SSR1 (safety §6) |
 | 5 | 2 | Fans | **220 VAC axial fans** | Inlet (SSR3) + exhaust (SSR4) |
 | 6 | 4 | Load cells | **50 kg each, 4-wire** (Red→E+, Black→E−, Green→A+, White→A−) | Summed full-bridge on one HX711 → 200 kg total (wiring §2.3) |
 | 7 | 1 | HX711 breakout | 24-bit ADC (10 SPS default) | Powered from 3V3 |
-| 8 | 1 | Temp/humidity sensor | **SHT31 breakout, I2C addr 0x44** | 0x45 if ADDR tied HIGH; temp feedback for PID |
+| 8 | 1 | Temp/humidity sensor | **SHT31 breakout, I2C 0x44/0x45** | Firmware auto-detects either address; temp feedback for PID |
 | 9 | 1 | Mains PSU | **220 VAC → 12 V DC, 5 A (60 W)** | Mains-isolated 12 V rail |
 | 10 | 1 | Buck converter | **12 V → 5 V DC, 3 A** | Feeds ESP32 5V pin; onboard regulator makes 3.3 V |
 | 11 | 3 | Fuses + holders | **10 A (heater) / 2 A (inlet fan) / 2 A (exhaust fan)** | One per AC branch, ~1.5× steady-state current |

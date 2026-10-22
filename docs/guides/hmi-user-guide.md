@@ -69,17 +69,30 @@ Live overview, refreshed from the 1 Hz status packet (UI redraw every ~2 s):
 
 ## 3. Control Screen
 
-### 3.1 Drying Preset (one-tap temperature)
-| Preset | Setpoint |
-|---|---|
-| 🐟 **Tuyo** | 60 °C |
-| 🐟 **Danggit** | 60 °C |
-| 🦑 **Pusit** | 50 °C |
-| **Others** | Custom (use the +/− buttons) |
+### 3.1 Drying Presets (one-tap profile)
+
+The preset row is built from the **HMI's own NVS list** (not fixed in code). On
+first boot it is seeded with the classic profiles:
+
+| Preset | Setpoint | Water-loss target |
+|---|---|---|
+| 🐟 **Tuyo** | 60 °C | 70 % |
+| 🐟 **Danggit** | 60 °C | 70 % |
+| 🦑 **Pusit** | 50 °C | 70 % |
+
+The row also always ends with **Custom** and **+ Add**:
+
+- Tapping a saved preset sends **both** `SET_TEMPERATURE` and `SET_WATER_LOSS`,
+  so a fresh session starts with the right temperature *and* auto-complete target.
+- **Custom** is **not** a stored preset — it reveals the manual
+  `-5  −  +  +5` temperature row and keeps the current water-loss slider value.
+- **+ Add** opens the **Preset Manager** (see §3.5).
 
 ### 3.2 Manual temperature row
-`-5  −  +  +5` around the current setpoint — each tap sends
-`SET_TEMPERATURE` immediately (and persists to NVS on the controller).
+
+`-5  −  +  +5` around the current setpoint — visible only while **Custom** is
+selected. Each tap sends `SET_TEMPERATURE` immediately (and persists to NVS on
+the controller). Range is clamped to **30–100 °C**.
 
 ### 3.3 Target Water Loss
 Slider (with % label) — sets the **auto-complete** target. The controller stops
@@ -95,6 +108,23 @@ the session when this % is reached. 0% = auto-complete off.
 
 Buttons give **instant feedback** (optimistic state) and are corrected by the
 next 1 Hz status packet — that's normal, not a bug.
+
+### 3.5 Preset Manager (+ Add)
+
+- **Add:** enter a product name (up to **12 characters**; blank becomes
+  `Preset N`), set the temperature (**30–100 °C**) and water-loss target
+  (**10–95 %**), then tap **SAVE PRESET**. The preset is written to HMI NVS
+  immediately and appears in the row.
+- **Delete:** each saved preset in the list has a delete button; deletion is
+  persisted immediately.
+- **Limits:** max **8** presets; the saved list scrolls. Duplicate names are
+  allowed.
+- **Keyboard:** tapping the name field shows the on-screen keyboard. It starts
+  **hidden** so it never covers the form. Hide it with **✓** / **✗** on the
+  keyboard, or by tapping the dimmed backdrop. Close the whole manager with the
+  **X** in the title bar (always visible) or the **CLOSE** button.
+- Presets live on the HMI — swapping the HMI does not copy them, and they are
+  not sent to the controller until selected.
 
 ---
 
@@ -112,9 +142,16 @@ cross-reboot history storage yet).
 
 ## 5. Diagnostics Screen
 
-### 5.1 Sensor Status / Power / I2C / System cards
-Live status: SHT31 (temp/humidity, CRC-valid), load cell weight, PID state,
-I2C device list, uptime, packet counters, and last status-packet time.
+### 5.1 Sensor Status / I2C / System cards
+Live status:
+- **Sensor Status** — SHT31 temperature + humidity with an OK/error dot, load
+  cell weight/status, PID state, and the **⟳ RUN SENSOR TEST** button.
+- **I2C Devices** — SHT31 detected / not detected.
+- **System Info** — Controller Link, Last Update, HMI Uptime, Free Heap.
+
+> The old **Power Readings** card (fan current, heater power, battery voltage)
+> and the static HMI/display/LVGL version rows were removed — those values are
+> not measured by the current hardware.
 
 ### 5.2 ⚙ CALIBRATE SCALE (guided 3-step wizard)
 1. **Step 1** — Empty the scale and tap **TARE SCALE** (controller must be IDLE).
@@ -124,8 +161,9 @@ I2C device list, uptime, packet counters, and last status-packet time.
 → Full details: [`calibration-guide.md`](calibration-guide.md).
 
 ### 5.3 ⟳ RUN SENSOR TEST
-Forces an immediate status packet (SHT31 + load cell read) — handy for
-confirming the link and sensors live.
+Lives in the **Sensor Status** card (`⟳ RUN SENSOR TEST`). Forces an immediate
+status packet (SHT31 + load cell read) — handy for confirming the link and
+sensors live.
 
 > ⚠️ TARE/CALIBRATE are **ignored while a session is active** — the controller
 > gates them to IDLE. Press STOP first.
@@ -157,7 +195,8 @@ unload/store → clean & maintain.
 | STOP | `STOP_DRYING` | All SSRs off, session cleared |
 | PAUSE | `PAUSE_DRYING` | All SSRs off, session saved (resumable, even across reboot) |
 | RESUME | `RESUME_DRYING` | PID back on, runtime continues |
-| +/−, presets | `SET_TEMPERATURE` | Setpoint set + persisted |
+| +/− (Custom) | `SET_TEMPERATURE` | Setpoint set + persisted |
+| Preset chip | `SET_TEMPERATURE` + `SET_WATER_LOSS` | Temperature and auto-complete target applied + persisted |
 | Slider | `SET_WATER_LOSS` | Auto-complete target set + persisted |
 | TARE / CALIBRATE | `TARE_SCALE` / `CALIBRATE_SCALE` | Only in IDLE; factor saved to NVS |
 
@@ -182,5 +221,7 @@ unload/store → clean & maintain.
   (`sendHeaterControl` / `sendFanControl` / `sendExhaustControl`). Any manual
   command ends an active session first, so manual and automatic control never fight.
 - **History** resets on HMI reboot (analytics buffer is RAM-only).
+- **Presets** persist in HMI NVS across reboots and re-flashes that keep NVS;
+  **Custom** is a mode, not a saved preset.
 - **Elapsed/EDT** come from the controller — if the HMI reboots mid-session, the
   numbers are correct again within 1 s (no local clock guessing).

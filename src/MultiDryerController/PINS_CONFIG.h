@@ -1,7 +1,7 @@
 // PINS_CONFIG.h
 // Multi Dryer Controller — centralized pin assignments (ESP32 38-pin DevKitC)
 //
-// Wiring plan: references/plans/hardware-wiring.md
+// Wiring plan: docs/schematic/hardware-wiring.md
 //
 // Boot/WiFi safety rules applied here:
 //   - No strapping pins (0, 2, 4, 5, 12, 15) — flashing/boot always works.
@@ -16,12 +16,12 @@
 // =========================
 // SSR / Power Outputs
 // =========================
-// SSR1: PTC Heater (power stage)
-// SSR3: Inlet Air Fan
-// SSR4: Exhaust Fan
+// SSR1: PTC Heater (power stage)   → GPIO 25
+// SSR3: Inlet Air Fan              → GPIO 26
+// SSR4: Exhaust Fan                → GPIO 27
 // (3-SSR build: SSR1 = heater, SSR3 = inlet fan, SSR4 = exhaust fan. The old
-//  SSR2 exhaust-outlet channel on GPIO 25 was removed; venting is done by the
-//  exhaust fan alone.)
+//  SSR2 exhaust-outlet channel was removed; venting is done by the exhaust fan
+//  alone. GPIO 13 is now spare.)
 #ifndef SSR1_PIN
 #define SSR1_PIN 25
 #endif
@@ -61,7 +61,7 @@
 #define SHT31_SCL_PIN 22
 #endif
 
-// Spare digital: GPIO 16, 17, 18, 19, 23, 25, 33 (16/17 = WROOM-32 only — do NOT
+// Spare digital: GPIO 13, 16, 17, 18, 19, 23, 33 (16/17 = WROOM-32 only — do NOT
 // use on WROVER modules, where they are PSRAM).
 // Spare input-only (future analog, ADC1/WiFi-safe): GPIO 34, 36, 39.
 

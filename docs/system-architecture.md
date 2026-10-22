@@ -46,7 +46,7 @@ Modules in `src/MultiDryerController/`, roughly in init order:
 |---|---|
 | `MultiDryerController.ino` | Entry point: init sequence (pins → load cell → SHT31 → PID → drying → ESP-NOW) and the main loop |
 | `PINS_CONFIG.h` | Boot/WiFi-safe pin assignments (single source of truth) |
-| `SHT31_CONFIG.h` | Non-blocking SHT31 driver (I2C, CRC-8) → `getTemperature()` / `getHumidity()` |
+| `SHT31_CONFIG.h` | SHT31/SHT30 driver via **Adafruit_SHT31** (I2C @100 kHz, 2 s poll, 0x44/0x45 auto-detect, re-probe after 3 fails) → `getTemperature()` / `getHumidity()` |
 | `LOADCELL_CONFIG.h` | HX711 driver: kg reads, TARE/CALIBRATE, factor in NVS |
 | `PID_CONFIG.h` | PID_v1 temperature control + **vent safety guard** |
 | `DRYER_STATE.h` | State machine, water-loss math, runtime/EDT, NVS session & config persistence |
@@ -88,6 +88,7 @@ Modules in `src/MultiDryerHMI/`:
 |---|---|
 | `MultiDryerHMI.ino` | Entry point |
 | `serial_protocol.*` | ESP-NOW transport: senders + `applyStatusPacket` (packet → `dryerData`) |
+| `drying_presets.*` | Named product presets in HMI NVS (namespace `presets`) |
 | `dryer_data.h` | Data model — the single source the screens read |
 | `screen_manager.*` | Screen navigation |
 | `boot_screen` / `dashboard` / `control` / `manual_operation` / `analytics` / `diagnostics` / `alert_popup` | LVGL screens |
@@ -113,6 +114,10 @@ ESP-NOW command ◄── button callbacks ◄── optimistic state ── tou
 - **Reliability:** status is periodic (a missed packet self-heals); commands are
   queued in an 8-slot ring buffer so bursts are never dropped during the
   ~300 ms HX711 read window. ESP-NOW ACK tracks `hmiReachable`.
+- **Core 3.x compatibility:** both sides use the IDF 5.x
+  `esp_now_recv_info_t*` receive callback and read their own MAC with
+  `esp_wifi_get_mac()` (falling back to `esp_read_mac()`), so pairing works even
+  when the Wi-Fi driver is still starting up.
 - **Authoritative data:** runtime, EDT, water loss, and weight always come from
   the controller — the HMI never recomputes them.
 
@@ -125,10 +130,16 @@ ESP-NOW command ◄── button callbacks ◄── optimistic state ── tou
 | `loadcell` | `factor` | Calibration factor (counts/kg) | `CALIBRATE:<kg>` |
 | `drying` | `magic`, `state`, `initW`, `runMs`, `wlTgt`, `setpt`, `hxoff` | Active session: state, initial weight, elapsed runtime, water-loss target, setpoint, **HX711 raw offset** | session transitions + every 30 s while drying |
 | `drying` | `magic`, `wlTgt`, `setpt` | Idle config (survives reboot with no session) | `SET_TEMPERATURE` / `SET_WATER_LOSS` |
+| `presets` (HMI) | `count`, `n0`…`n7`, `t0`…`t7`, `w0`…`w7` | Named drying presets: name, temperature, water-loss target (max 8) | Preset manager add/delete |
 
 Restore rules: valid `magic` + non-IDLE `state` → resume session (re-apply
 offset, PID back on if DRYING). Config keys restore in every boot. Session
 completion/stop clears the state marker only — config keys are preserved.
+
+Presets live on the **HMI**, not the controller: selecting one just sends
+`SET_TEMPERATURE` + `SET_WATER_LOSS`. The **Custom** option is not a stored
+preset — it exposes the manual +/− row. Presets are seeded with the classic
+profiles on first boot and survive HMI re-flashes that preserve NVS.
 
 ---
 

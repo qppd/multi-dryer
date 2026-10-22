@@ -126,16 +126,16 @@ diff the outputs against the committed previews.
 | H1 | Boot | "Multi-Purpose Dryer" title + subtitle render |
 | H2 | Dashboard (idle & drying) | Live values, gauge needle, START/STOP/SET TEMP/HOW TO USE buttons |
 | H3 | Control | Preset row from saved list, Custom, **+ Add** opens manager |
-| H4 | Preset manager | Add (name + temp + water-loss), list with delete, keyboard works |
-| H5 | Analytics | Temp/humidity/weight charts draw curves with data |
-| H6 | Diagnostics | Status fields, TARE/CALIBRATE buttons |
+| H4 | Preset manager | Add (name + temp + water-loss), list with delete; keyboard hidden until the name field is tapped, hides on ✓/✗/backdrop; title-bar **X** closes |
+| H5 | Analytics | Value header sits above the chart (no overlap); charts draw curves with data |
+| H6 | Diagnostics | Sensor status + I2C + system info cards, RUN SENSOR TEST, TARE/CALIBRATE; no power/version rows |
 | H7 | HOW TO USE | Opens from dashboard, 10 step cards, back arrow returns |
 
 ### 5.2 On-device (at bring-up, after `bring-up-checklist.md` §2.4 pairing)
 
 - Every nav path: Dashboard ⇄ Control ⇄ Analytics ⇄ Diagnostics, Dashboard → HOW TO USE → back.
 - Preset lifecycle: add → appears in row → tap applies temp + water-loss on the
-  controller (verify via serial) → delete → gone after HMI reboot (NVS).
+  controller (verify via serial) → delete → remains deleted after an HMI reboot (NVS).
 - Optimistic UI: button press gives instant feedback; the 1 Hz status packet
   corrects it within a second.
 - Completion popup appears when the controller auto-completes.
