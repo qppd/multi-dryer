@@ -14,11 +14,11 @@ Design goal: every pin on the controller is **boot-safe** (no strapping/flash/bo
 | **SSR1 — PTC heater** (power stage) | **25** | D25 | clean digital output |
 | **SSR3 — inlet air fan** | **26** | D26 | clean digital output |
 | **SSR4 — exhaust fan** | **27** | D27 | clean digital output |
-| **HX711 — DOUT** (load cell data) | **35** | D35 | input-only pin — perfect (read-only) |
+| **HX711 — DOUT** (load cell data) | **33** | D33 | clean digital input (GPIO 35 also works, input-only) |
 | **HX711 — SCK** (load cell clock) | **32** | D32 | clean digital output |
 | **SHT31 — temp/humidity (I2C)** | **21 (SDA), 22 (SCL)** | | hardware I2C @100 kHz; temp feedback for PID (FishDryer baseline); driver: `SHT31_CONFIG.h` (0x44/0x45 auto-detect) |
-| Spare digital | 13, 16, 17, 18, 19, 23, 33 | | 16/17 = WROOM-32 only (PSRAM on WROVER); 18/19/23 = default VSPI; 13 = freed (previous exhaust-SSR line) |
-| Spare input-only | 34, 36, 39 | | future analog sensors (ADC1, WiFi-safe) |
+| Spare digital | 13, 16, 17, 18, 19, 23 | | 16/17 = WROOM-32 only (PSRAM on WROVER); 18/19/23 = default VSPI; 13 = freed (previous exhaust-SSR line) |
+| Spare input-only | 34, 35, 36, 39 | | future analog sensors (ADC1, WiFi-safe) |
 | **Avoid — strapping pins** | 0, 2, 4, 5, 12, 15 | | see §3.1 |
 | **Avoid — flash pins** | 6, 7, 8, 9, 10, 11 | | connected to SPI flash inside module |
 | **Avoid — UART0** | 1 (TX), 3 (RX) | | USB-serial for flashing/debug only |
@@ -70,7 +70,7 @@ parallel all four — Red→E+   Black→E−   Green→A+   White→A−   Shie
 HX711 module          ESP32 (38-pin)
   VCC      ──────────  3V3
   GND      ──────────  GND
-  DOUT     ──────────  GPIO 35      (input-only pin — safe)
+  DOUT     ──────────  GPIO 33
   SCK      ──────────  GPIO 32
   RATE/GND ──────────  leave default (10 SPS)
 ```
@@ -168,7 +168,7 @@ GPIO 1/3 remain free → flashing and serial debugging always work with peripher
 
 ### 5.2 HX711 supply
 - **HX711 VCC → 3V3** (recommended): direct logic levels, no level shifting. Slightly lower bridge excitation — fine for the 4× 50 kg paralleled bridge.
-- **DOUT floats when the HX711 is unpowered** (GPIO 35 is input-only with no internal pull-up) — firmware must gate reads on `scale.is_ready()` (the FishDryer baseline already does) so a floating DOUT is never mistaken for a valid reading.
+- **DOUT floats when the HX711 is unpowered** (GPIO 33 is a normal input; GPIO 35 would be input-only with no internal pull-up) — firmware gates reads on the HX711_ADC conversion/readiness timeout so a floating DOUT is never treated as a valid weight.
 
 ### 5.3 Verify module type (important!)
 - 38-pin DevKitC boards ship with **WROOM-32** (GPIO 16/17 free) or **WROVER** (GPIO 16/17 used by PSRAM — do not touch them). The allocation above lists 16/17 as spare; nothing critical depends on them.

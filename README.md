@@ -95,7 +95,7 @@ multi-dryer/
 | SSR1 — PTC heater | 25 |
 | SSR3 — inlet fan | 26 |
 | SSR4 — exhaust fan | 27 |
-| HX711 DOUT / SCK | 35 / 32 |
+| HX711 DOUT / SCK | 33 / 32 |
 | SHT31 SDA / SCL | 21 / 22 |
 
 Full wiring plan: [`docs/schematic/hardware-wiring.md`](docs/schematic/hardware-wiring.md), the Fritzing schematic ([`multidryer.fzz`](docs/schematic/multidryer.fzz) — view: [`multidryer_schematic.png`](docs/schematic/multidryer_schematic.png)), and the interactive [Cirkit Designer schematic](https://app.cirkitdesigner.com/project/9d03db5a-37c8-4f46-ac3f-7d5821ce26ce).
@@ -106,7 +106,7 @@ Full wiring plan: [`docs/schematic/hardware-wiring.md`](docs/schematic/hardware-
 
 **Controller** (`src/MultiDryerController`)
 - Arduino IDE or PlatformIO with **ESP32 Arduino core 3.x** (built/tested on **3.0.5**)
-- Libraries: [`br3ttb/PID_v1`](https://github.com/br3ttb/Arduino-PID-Library), [`bogde/HX711`](https://github.com/bogde/HX711), [`adafruit/Adafruit_SHT31`](https://github.com/adafruit/Adafruit_SHT31) (`Preferences` and `Wire` are built-in)
+- Libraries: [`br3ttb/PID_v1`](https://github.com/br3ttb/Arduino-PID-Library), [`olkal/HX711_ADC`](https://github.com/olkal/HX711_ADC), [`adafruit/Adafruit_SHT31`](https://github.com/adafruit/Adafruit_SHT31) (`Preferences` and `Wire` are built-in)
 
 **HMI** (`src/MultiDryerHMI`)
 - **LVGL 8.x** (enable fonts *Montserrat 14/16/20/24/30/36/48* and widgets *meter/chart/bar/slider/switch/tabview/checkbox/spinner/keyboard/textarea* in `lv_conf.h`)

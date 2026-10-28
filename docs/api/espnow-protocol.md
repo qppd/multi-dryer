@@ -129,7 +129,8 @@ Bitmask in `EspNowStatusPacket.flags` — reflects the **real SSR output state**
 2. **HMI → Controller:** commands via `serial_protocol.cpp` senders; the controller
    queues them in an **8-slot ring buffer** (`cmdQueue*` in `espnow_link.h`) and
    drains one per loop — bursts (e.g. `SET_TEMPERATURE → SET_WATER_LOSS →
-   START_DRYING`) are never dropped, even during the ~300 ms HX711 read window.
+   START_DRYING`) are never dropped, even while the loop is busy with an HX711
+   tare/calibration or an SHT31 read.
 3. **Delivery:** ESP-NOW ACK updates the controller's `hmiReachable` flag; send
    failures are logged (`check CONTROLLER_PEER_MAC`).
 4. **HMI UI:** buttons use optimistic state immediately, corrected by the next

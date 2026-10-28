@@ -5,7 +5,7 @@
 // hardware — but keeps the multi-dryer's polling cadence: one measurement every
 // SHT31_READ_INTERVAL_MS, never inside the fast control loop. A single
 // readBoth() blocks ~15-30 ms once per 2 s, which is harmless here (the HX711
-// and PID run on their own slower schedules).
+// is polled from loop() and at worst misses one 10 SPS conversion window).
 //
 // Address: modules answer at 0x44 (default) or 0x45 (ADDR pin HIGH). Both are
 // probed automatically instead of hard-coding one, and the sensor is re-detected

@@ -88,7 +88,7 @@ crashing identifies the failing module.
 
 | Symptom | Likely cause | Fix |
 |---|---|---|
-| `WARNING: HX711 not responding!` | Wiring / power / DOUT floating | Check DOUT=35, SCK=32, VCC, GND; HX711 must be powered before `is_ready()` |
+| `WARNING: HX711 not responding!` | Wiring / power / DOUT floating | Check DOUT=33, SCK=32, VCC, GND; HX711 must be powered before the ready timeout can pass |
 | Weight reads 0.000 always | Sensor not ready → `readLoadCell()` returns 0 | Check wiring; watch for the transition-only "not ready" print |
 | Weight is negative | Noise clamp or wrong factor sign | `readLoadCell()` clamps negatives to 0; re-calibrate |
 | TARE/CALIBRATE "ignored" | **Session active** — commands gated to IDLE | Press STOP, then TARE/CALIBRATE |

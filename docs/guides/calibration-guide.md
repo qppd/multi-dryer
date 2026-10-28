@@ -4,7 +4,7 @@ How to calibrate the HX711 + load cell on the Multi Dryer controller, and how
 the calibration persists.
 
 > Implementation: [`src/MultiDryerController/LOADCELL_CONFIG.h`](../../src/MultiDryerController/LOADCELL_CONFIG.h)
-> (bogde/HX711 library, reads in kg, factor persisted in NVS).
+> (HX711_ADC by Olav Kallhovd, reads in kg, factor persisted in NVS).
 
 ---
 
@@ -15,8 +15,8 @@ kilograms:
 
 | Value | What it is | Where it lives |
 |---|---|---|
-| **Calibration factor** | Counts per kg (`scale.get_scale()`) — scales raw ADC counts to weight | NVS namespace `loadcell`, key `factor` |
-| **Offset (zero reference)** | The raw count read with nothing on the scale (`scale.get_offset()`) | NVS namespace `drying`, key `hxoff` (saved with every drying session) |
+| **Calibration factor** | Counts per kg (`loadCell.getCalFactor()`) — scales raw ADC counts to weight | NVS namespace `loadcell`, key `factor_v2` |
+| **Offset (zero reference)** | The raw count read with nothing on the scale (`loadCell.getTareOffset()`) | NVS namespace `drying`, key `hxoff` (saved with every drying session) |
 
 > This rig uses **4× 50 kg load cells wired as a summed full-bridge** on the one
 > HX711 channel (200 kg total capacity). The procedure below calibrates the
@@ -45,7 +45,7 @@ kilograms:
 ## 3. Prerequisites
 
 - [ ] Controller running, state machine **IDLE** (no session active — check the HMI dashboard shows IDLE).
-- [ ] HX711 powered and connected (DOUT→GPIO 35, SCK→GPIO 32) — serial should say `Load cell ready (kg)`.
+- [ ] HX711 powered and connected (DOUT→GPIO 33, SCK→GPIO 32) — serial should say `HX711 load cell ready (kg)`.
 - [ ] A known-weight object (a verified 1 kg, 2 kg, or 5 kg weight; a digital kitchen scale to check anything else).
 - [ ] Nothing resting on the scale, and the platform must be **free to move** (not touching the enclosure).
 
@@ -59,7 +59,7 @@ The HMI sends the same commands over ESP-NOW (`CMD_TARE_SCALE` /
 ### Step 1 — Tare (zero)
 1. Make sure the scale is **empty** and the platform is stable.
 2. Send **TARE** (HMI diagnostics button, or `CMD_TARE_SCALE`).
-3. Expected serial: `Load cell tared. Place known weight, then send CALIBRATE:<kg>.`
+3. Expected serial: `OK. Place known weight, then send CALIBRATE:<kg>.`
 4. Expected HMI weight: **0.000 kg** (give it ~1 s to settle).
 
 ### Step 2 — Place the known weight
@@ -72,7 +72,9 @@ The HMI sends the same commands over ESP-NOW (`CMD_TARE_SCALE` /
 2. Expected serial:
    ```
    --- Calibration complete ---
-   Factor <value> saved to NVS.
+   Calibration factor: <value>
+   Reading now       : <kg> kg
+   Factor saved to NVS. Will be restored on next power-up.
    ```
 3. Expected HMI weight: the reading should now match the known weight within ±2%.
 
@@ -81,10 +83,12 @@ The HMI sends the same commands over ESP-NOW (`CMD_TARE_SCALE` /
 2. Put the weight back → reads the known mass.
 3. Repeat once more — readings must be repeatable.
 
-> **Alternative — serial only:** the FishDryer protocol accepts the same
-> commands on the controller's serial line. If you're testing without the HMI,
-> use the serial monitor instead. Both paths end at `tareLoadCell()` /
-> `calibrateLoadCell()`, so the result is identical.
+> **Alternative — serial only:** the controller also accepts bench commands on
+> its USB serial line (115200 baud, Newline line ending): `TARE`,
+> `CALIBRATE:<kg>`, `READ`, `STATUS`, `FACTOR`, `HELP`. Use this when testing
+> without the HMI. Both paths end at `tareLoadCell()` / `calibrateLoadCell()`,
+> so the result is identical. Serial TARE/CALIBRATE bypass the IDLE guard —
+> only use them on the bench with no drying session running.
 
 ---
 
@@ -94,15 +98,19 @@ The HMI sends the same commands over ESP-NOW (`CMD_TARE_SCALE` /
 // LOADCELL_CONFIG.h
 Preferences prefs;
 prefs.begin("loadcell", false);          // read-write
-prefs.putFloat("factor", scale.get_scale());
+prefs.putFloat("factor_v2", loadCell.getCalFactor());
 prefs.end();
 ```
 
 - Stored in **NVS** (wear-leveled, native ESP32 storage) — the Nano baseline's
   EEPROM equivalent.
 - **Restored on boot** in `initLoadCell()` if the saved value is valid
-  (`0 < factor < 999999` and finite); otherwise the default factor
-  `-10697.956054f` is used and serial reminds you to calibrate.
+  (finite and non-zero); otherwise the default factor `-10697.956054f` is used
+  and serial reminds you to calibrate.
+- The key is `factor_v2` (not `factor`): the previous firmware used a different
+  HX711 library whose saved factor had the opposite meaning (kg/count instead
+  of counts/kg). Using a new key means an old value can never be misread as a
+  huge weight — **recalibrate once after flashing this firmware**.
 - The factor is **not** affected by drying sessions (session NVS only stores
   the offset/zero reference).
 
@@ -112,12 +120,12 @@ prefs.end();
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `WARNING: HX711 not responding!` at boot | Wiring / power / too little wait | Check DOUT=35, SCK=32, VCC=3V3/5V, GND; let it power-stabilize |
+| `WARNING: HX711 not responding!` at boot | Wiring / power / insufficient settling time | Check DOUT=33, SCK=32, VCC=3V3/5V, GND; let it power-stabilize |
 | Weight reads **negative** | Wrong factor sign, or clamped noise | Re-calibrate; `readLoadCell()` clamps negatives to 0 anyway |
 | Reading off by a consistent **%** | Stale factor (e.g. after platform change) | Re-run CALIBRATE with a known weight |
 | Reading off by a consistent **amount** | Offset drift (temperature, mechanical) | Re-TARE (IDLE only) |
 | CALIBRATE "does nothing" | Session active → gated | Press STOP first, then calibrate |
-| Jittery readings | Vibration / noise / too few samples | Stabilize platform; `LOADCELL_SAMPLES` = 3; tie HX711 RATE to 3.3 V for 80 SPS |
+| Jittery readings | Vibration / noise / too few samples | Stabilize platform; HX711_ADC averages 16 samples by default; tie HX711 RATE to 3.3 V for 80 SPS |
 | Water loss wrong after a reboot mid-drying | TARE happened during the session (destroyed reference) | Shouldn't happen — TARE is gated; if it did, NVS was cleared/older firmware |
 
 ---

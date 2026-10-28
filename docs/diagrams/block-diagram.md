@@ -30,7 +30,7 @@ flowchart TB
 
     subgraph SENS["Sensors"]
         S31["SHT31<br/>temp/humidity<br/>(I2C 21/22)"]
-        HX["HX711<br/>(DOUT 35 / SCK 32)"]
+        HX["HX711<br/>(DOUT 33 / SCK 32)"]
         CELL["Load cells 4× 50 kg<br/>(summed bridge)"]
     end
 

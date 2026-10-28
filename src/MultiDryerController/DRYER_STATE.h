@@ -35,7 +35,11 @@
 //     active (see espnow_link.h) so the HMI's boot-time TARE cannot destroy the
 //     restored zero reference.
 #define DRYER_PREFS_NS          "drying"
-#define DRYER_PREFS_MAGIC       0xD1
+// Bumped 0xD1 → 0xD2 with the HX711_ADC driver swap: the old library stored
+// the tare offset as a signed raw value, HX711_ADC stores offset-binary raw
+// data. A session saved by the previous firmware would restore a wrong zero
+// point, so old sessions are deliberately discarded once after the update.
+#define DRYER_PREFS_MAGIC       0xD2
 #define DRYER_SAVE_INTERVAL_MS  30000   // periodic save cadence while drying
 
 // ── Tracking state (single writer: updateDrying(), loop context) ─────────────
@@ -192,7 +196,7 @@ static void saveDryingSession(uint8_t state) {
     prefs.putULong("runMs", _runMs);
     prefs.putFloat("wlTgt", _waterLossTarget);
     prefs.putFloat("setpt", (float)TEMPERATURE_SETPOINT);
-    prefs.putLong("hxoff", (int64_t)scale.get_offset());   // zero reference
+    prefs.putLong("hxoff", (int64_t)loadCellGetOffset());   // zero reference
     prefs.end();
 }
 
@@ -240,7 +244,7 @@ static void restoreDryingSession() {
     _initialWeightKg     = prefs.getFloat("initW", 0.0f);
     _runMs               = prefs.getULong("runMs", 0);
     _runtimeSeconds      = _runMs / 1000UL;
-    scale.set_offset((long)prefs.getLong("hxoff", 0));   // re-apply zero reference
+    loadCellSetOffset((long)prefs.getLong("hxoff", 0));   // re-apply zero reference
     prefs.end();
 
     _state = (savedState == DSTATE_PAUSED) ? DSTATE_PAUSED : DSTATE_DRYING;

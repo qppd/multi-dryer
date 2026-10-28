@@ -1,6 +1,6 @@
 // MultiDryerController.ino
 // ESP32 38-pin controller.
-// Hardware wiring: references/plans/hardware-wiring.md
+// Hardware wiring: docs/schematic/hardware-wiring.md
 // Pin map:         PINS_CONFIG.h
 // Protocol:        espnow_protocol.h (shared with the HMI, keep byte-identical)
 
@@ -68,14 +68,24 @@ void setup() {
   pinMode(SSR3_PIN, OUTPUT); digitalWrite(SSR3_PIN, LOW);
   pinMode(SSR4_PIN, OUTPUT); digitalWrite(SSR4_PIN, LOW);
 
-  initLoadCell();   // HX711 weight sensor (DOUT=35, SCK=32)
+  // Bring the wireless link up BEFORE the load cell's 2.4 s settling window,
+  // so the HMI's boot-time TARE (sent 3 s after HMI boot) is queued instead of
+  // being lost while setup() is still blocking. The receive callback only
+  // enqueues commands; they are executed later from loop().
+  initEspNow();     // wireless link to the HMI board
+
+  initLoadCell();   // HX711 weight sensor (DOUT=33, SCK=32)
+  loadCellPrintHelp();
   initSHT31();      // temperature/humidity (I2C 21/22)
   initPID();        // PTC heater temperature control (starts in MANUAL = off)
-  initDrying();     // drying state machine (IDLE)
-  initEspNow();     // wireless link to the HMI board
+  initDrying();     // drying state machine (IDLE / restored session)
 }
 
 void loop() {
+  // HX711: keep conversions flowing — HX711_ADC needs one update() per pass.
+  // readLoadCell() elsewhere is a cheap non-blocking lookup (no HX711 I/O).
+  updateLoadCell();
+
   // Non-blocking SHT31 read state machine — call every iteration
   updateSHT31();
 
@@ -87,6 +97,9 @@ void loop() {
 
   // ESP-NOW: process HMI commands + send periodic status packets (1 Hz)
   espnowUpdate();
+
+  // USB serial: bench commands (TARE / CALIBRATE / STATUS ...) + weight stream
+  loadCellSerialTask();
 
   // Debug print every 5 s — mirrors what the HMI receives over ESP-NOW
   unsigned long now = millis();

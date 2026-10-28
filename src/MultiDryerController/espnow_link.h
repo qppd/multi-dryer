@@ -49,7 +49,7 @@ extern uint8_t ssrStateFlags;
 // and drained one per loop in espnowUpdate(). A queue (not a single slot)
 // guarantees rapid-fire bursts from the HMI — e.g. SET_TEMPERATURE →
 // SET_WATER_LOSS → START_DRYING — are never silently dropped, even if they
-// arrive during the ~300 ms HX711 read window.
+// arrive while the loop is busy (HX711 tare/calibration, SHT31 read).
 #define CMD_QUEUE_SIZE  8
 
 static volatile uint8_t cmdQueueTypes[CMD_QUEUE_SIZE];

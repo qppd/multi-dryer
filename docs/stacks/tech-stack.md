@@ -60,7 +60,7 @@ Pin allocation: `src/MultiDryerController/PINS_CONFIG.h` · wiring plan:
 |---|---|---|
 | **ESP32 Arduino core** | both | **3.x** (tested on 3.0.5 / IDF 5.x); uses the `esp_now_recv_info_t` receive callback; `WiFi`, `Preferences`, `Wire` built in |
 | **PID_v1** (`br3ttb/Arduino-PID-Library`) | controller | PD tuning: KP 4.0, KI 0.0, KD 22.0 |
-| **HX711** (`bogde/HX711`) | controller | Reads + tare + offset management |
+| **HX711** (`olkal/HX711_ADC`) | controller | Reads + tare + offset management |
 | **Adafruit_SHT31** (`adafruit/Adafruit_SHT31`) | controller | SHT3x driver (soft reset, `readBoth()`); CRC/status handled by the library |
 | **LVGL 8.x** | HMI | Fonts Montserrat 14/16/20/24/30/36/48; widgets meter/chart/bar/slider/switch/tabview/checkbox/spinner/keyboard/textarea |
 | **ESP32_Display_Panel** (`esp_display_panel.hpp`) | HMI | RGB LCD + GT911 touch init (Waveshare board config) |

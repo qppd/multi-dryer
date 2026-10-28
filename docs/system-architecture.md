@@ -112,8 +112,8 @@ ESP-NOW command ◄── button callbacks ◄── optimistic state ── tou
   - `EspNowStatusPacket` (38 B) — controller → HMI, 1 Hz.
   - `EspNowCmdPacket` (7 B) — HMI → controller, on demand.
 - **Reliability:** status is periodic (a missed packet self-heals); commands are
-  queued in an 8-slot ring buffer so bursts are never dropped during the
-  ~300 ms HX711 read window. ESP-NOW ACK tracks `hmiReachable`.
+  queued in an 8-slot ring buffer so bursts are never dropped while the loop is
+  busy (HX711 tare/calibration, SHT31 read). ESP-NOW ACK tracks `hmiReachable`.
 - **Core 3.x compatibility:** both sides use the IDF 5.x
   `esp_now_recv_info_t*` receive callback and read their own MAC with
   `esp_wifi_get_mac()` (falling back to `esp_read_mac()`), so pairing works even
@@ -127,7 +127,7 @@ ESP-NOW command ◄── button callbacks ◄── optimistic state ── tou
 
 | Namespace | Keys | Contents | Written by |
 |---|---|---|---|
-| `loadcell` | `factor` | Calibration factor (counts/kg) | `CALIBRATE:<kg>` |
+| `loadcell` | `factor_v2` | Calibration factor (counts/kg) | `CALIBRATE:<kg>` / `FACTOR:<value>` |
 | `drying` | `magic`, `state`, `initW`, `runMs`, `wlTgt`, `setpt`, `hxoff` | Active session: state, initial weight, elapsed runtime, water-loss target, setpoint, **HX711 raw offset** | session transitions + every 30 s while drying |
 | `drying` | `magic`, `wlTgt`, `setpt` | Idle config (survives reboot with no session) | `SET_TEMPERATURE` / `SET_WATER_LOSS` |
 | `presets` (HMI) | `count`, `n0`…`n7`, `t0`…`t7`, `w0`…`w7` | Named drying presets: name, temperature, water-loss target (max 8) | Preset manager add/delete |

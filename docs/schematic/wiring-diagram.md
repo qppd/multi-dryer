@@ -61,7 +61,7 @@ Edit the project in the Cirkit Designer editor, then save + re-share the link.
    - **GPIO 13 is now spare** (previous exhaust-fan SSR line)
 3. **HX711 + load cells** — four cells paralleled into one HX711:
    - Each cell: Red→E+, Black→E−, Green→A+, White→A−, Shield→GND (all E+/E−/A+/A− tied together)
-   - HX711: DOUT→**GPIO 35**, SCK→**GPIO 32**, VCC→**3V3**, GND→GND
+   - HX711: DOUT→**GPIO 33**, SCK→**GPIO 32**, VCC→**3V3**, GND→GND
 4. **SHT31** — SDA→**GPIO 21**, SCL→**GPIO 22**, VIN→3V3, GND→GND (firmware auto-detects 0x44/0x45)
 5. **Power** — 220 VAC → PSU → **12 V rail** → buck converter input; buck output
    **5 V** → ESP32 **5V** pin (onboard regulator makes 3.3 V). Common ground:

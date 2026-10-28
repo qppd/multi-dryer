@@ -37,10 +37,12 @@
 // =========================
 // HX711 Load Cell
 // =========================
-// DOUT is on an input-only pin (safe — it is a read line).
+// DT/DOUT is an output from the HX711 and an input to the ESP32.
 // SCK must be a clean digital output.
+// (GPIO 35 also works and is input-only; GPIO 33 is what the proven
+//  200 kg / HX711_ADC bench setup uses.)
 #ifndef LOADCELL_DOUT_PIN
-#define LOADCELL_DOUT_PIN 35
+#define LOADCELL_DOUT_PIN 33
 #endif
 
 #ifndef LOADCELL_SCK_PIN
@@ -61,8 +63,8 @@
 #define SHT31_SCL_PIN 22
 #endif
 
-// Spare digital: GPIO 13, 16, 17, 18, 19, 23, 33 (16/17 = WROOM-32 only — do NOT
+// Spare digital: GPIO 13, 16, 17, 18, 19, 23 (16/17 = WROOM-32 only — do NOT
 // use on WROVER modules, where they are PSRAM).
-// Spare input-only (future analog, ADC1/WiFi-safe): GPIO 34, 36, 39.
+// Spare input-only (future analog, ADC1/WiFi-safe): GPIO 34, 35, 36, 39.
 
 #endif // PINS_CONFIG_H
