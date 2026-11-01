@@ -26,6 +26,11 @@ kilograms:
 - **Offset** is set by `TARE`. It is *also* captured with every drying session
   (with the initial weight), so a mid-drying reboot restores the exact zero
   reference — no re-tare, even after a power cycle.
+- **Boot behavior:** the controller auto-tares only when **no session** was
+  restored. If a session is active, the saved zero reference is kept (the HMI's
+  boot-time TARE is ignored). This also means a controller-only reboot — e.g.
+  after flashing, while the HMI stays on — still displays weight instead of
+  sitting at `0.0 kg` with an unset offset.
 
 > ⚠️ **TARE / CALIBRATE are only accepted while the state machine is IDLE.**
 > If a session is active (or was restored), the commands are ignored — this

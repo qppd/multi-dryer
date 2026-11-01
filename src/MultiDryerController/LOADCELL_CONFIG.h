@@ -13,10 +13,12 @@
 // Behaviour:
 //   - updateLoadCell() must be called on every loop() pass; HX711_ADC reads
 //     one conversion at a time and needs the frequent polling.
-//   - No automatic tare on boot: the HMI sends TARE (or use the serial command)
-//     so a controller reboot never destroys the drying session's zero point.
+//   - The sketch auto-tares on boot only when no drying session was restored
+//     (see setup()), so a controller-only reboot still shows weight. An active
+//     session keeps its saved zero reference — the HMI's boot-time TARE is
+//     ignored while a session is active.
 //   - Calibration factor is persisted in ESP32 NVS (Preferences) under
-//     namespace "loadcell", key "factor", and restored on every boot.
+//     namespace "loadcell", key "factor_v2", and restored on every boot.
 //
 // Bench serial commands (115200 baud, "Newline" line ending):
 //   HELP                show this list
@@ -198,7 +200,7 @@ void initLoadCell() {
     if (loadCell.getSPS() < 7.0f) {
         Serial.println(F("  WARNING: sampling rate too low - check wiring."));
     }
-    Serial.println(F("HX711 load cell ready (kg). Waiting for TARE command."));
+    Serial.println(F("HX711 load cell ready (kg)."));
 
     loadCellLastPrintMs = millis();
 }
@@ -249,7 +251,8 @@ void tareLoadCell() {
 
     loadCellKg         = loadCell.getData();
     loadCellLastDataMs = millis();
-    Serial.println(F("OK. Place known weight, then send CALIBRATE:<kg>."));
+    Serial.printf("OK. Offset = %ld. Place known weight, then send CALIBRATE:<kg>.\n",
+                  loadCell.getTareOffset());
 }
 
 // Fill the moving-average dataset with fresh conversions, but never hang if
@@ -329,11 +332,19 @@ void loadCellPrintStatus() {
     Serial.println(F("--- LOAD CELL STATUS ---"));
     Serial.printf("HX711 ready       : %s\n", loadCellReady() ? "yes" : "no");
     Serial.printf("Calibration factor: %.6f\n", getCalibrationFactor());
+    Serial.printf("Tare offset       : %ld\n", loadCell.getTareOffset());
     Serial.printf("Sampling rate     : %.1f SPS\n", loadCell.getSPS());
     Serial.printf("Stream            : %s\n", loadCellStreamEnabled ? "ON" : "OFF");
     Serial.printf("Interval          : %lu ms\n", (unsigned long)loadCellPrintIntervalMs);
     if (loadCellReady()) {
-        Serial.printf("Weight            : %.3f kg\n", readLoadCell());
+        // getData() = (smoothed raw - tareOffset) / calFactor, so multiplying
+        // it back by the factor gives the signed raw count change. If weight
+        // reads 0 while this is non-zero, the factor sign is wrong or the
+        // platform was not tared.
+        float kgRaw = loadCell.getData();
+        Serial.printf("Raw counts        : %.0f\n", kgRaw * loadCell.getCalFactor());
+        Serial.printf("Weight (raw)      : %.3f kg\n", kgRaw);
+        Serial.printf("Weight (clamped)  : %.3f kg\n", readLoadCell());
     }
     Serial.println(F("------------------------"));
 }

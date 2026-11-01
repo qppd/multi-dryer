@@ -79,6 +79,14 @@ void setup() {
   initSHT31();      // temperature/humidity (I2C 21/22)
   initPID();        // PTC heater temperature control (starts in MANUAL = off)
   initDrying();     // drying state machine (IDLE / restored session)
+
+  // Zero the scale on boot ONLY when no drying session was restored. The HMI
+  // sends TARE only at its own boot, so a controller-only reboot (e.g. after
+  // flashing) would otherwise leave tareOffset = 0 and the HMI would show
+  // 0.0 kg forever. An active session keeps its saved zero reference instead.
+  if (getDryerState() == DSTATE_IDLE) {
+    tareLoadCell();
+  }
 }
 
 void loop() {
