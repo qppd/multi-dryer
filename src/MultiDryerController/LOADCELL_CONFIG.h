@@ -77,6 +77,20 @@ uint32_t loadCellLastDataMs = 0;
 // Defined below; initLoadCell() polls it while waiting for the first sample.
 bool updateLoadCell();
 
+// HX711_ADC shifts the 24-bit value out by bit-banging SCK. If an interrupt
+// keeps SCK HIGH for more than ~60 us the HX711 can latch into power-down
+// mode and stop converting. The library's SCK_DISABLE_INTERRUPTS option
+// defaults to 0, so wrap every read here instead of depending on a patched
+// copy of the library. The critical section is only ~27 SCK pulses (tens of
+// microseconds) and runs at most once per conversion, so Wi-Fi/ESP-NOW is
+// not affected.
+static inline uint8_t loadCellUpdateSafe() {
+    noInterrupts();
+    uint8_t updated = loadCell.update();
+    interrupts();
+    return updated;
+}
+
 // Serial weight stream (bench diagnostics)
 bool     loadCellStreamEnabled  = true;
 uint32_t loadCellPrintIntervalMs = 1000;
@@ -152,32 +166,17 @@ void loadCellSetOffset(long offset) {
     loadCellKg = loadCell.getData();   // refresh the cache with the new zero
 }
 
-// --- Lifecycle ----------------------------------------------
-void initLoadCell() {
-    loadCell.begin();
+// Fill the moving-average dataset with conversions. HX711_ADC needs one
+// update() per sample; this also gives the converter time to finish its first
+// conversion after power-up. Bounded so a missing HX711 never hangs boot.
+static int loadCellSettle(uint32_t durationMs, uint32_t extraMs) {
+    const int      needed   = loadCell.getSamplesInUse() + 2;   // + ignore-high/low
+    int            samples  = 0;
+    uint32_t       started  = millis();
+    const uint32_t hardStop = durationMs + extraMs;
 
-    // begin() configures DOUT as a plain INPUT. A pull-up keeps the line HIGH
-    // when the HX711 is unpowered, so floating noise is never mistaken for a
-    // conversion (the HX711's push-pull output overrides it when powered).
-    pinMode(LOADCELL_DOUT_PIN, INPUT_PULLUP);
-
-    loadCellRestoreFactor();
-
-    // HX711_ADC's start(t) waits against the *absolute* millis() value, so it
-    // only behaves as intended when called at the very start of setup(). This
-    // controller initializes ESP-NOW first (so the HMI's boot TARE is queued),
-    // therefore use a relative settling loop here instead. It also fills the
-    // moving-average dataset at least once before the first reading is used.
-    Serial.printf("Load cell: stabilizing %lu ms... ",
-                  (unsigned long)LOADCELL_STABILIZING_MS);
-
-    const int      needed  = loadCell.getSamplesInUse() + 2;   // + ignore-high/low
-    int            samples = 0;
-    uint32_t       started = millis();
-    const uint32_t hardStop = LOADCELL_STABILIZING_MS + 3000UL;
-
-    while ((millis() - started) < LOADCELL_STABILIZING_MS || samples < needed) {
-        if (loadCell.update()) {
+    while ((millis() - started) < durationMs || samples < needed) {
+        if (loadCellUpdateSafe()) {
             loadCellKg         = loadCell.getData();
             loadCellLastDataMs = millis();
             samples++;
@@ -185,13 +184,45 @@ void initLoadCell() {
         if ((millis() - started) > hardStop) break;   // no HX711 -> don't hang boot
         delay(1);
     }
-    Serial.println(F("done."));
+    return samples;
+}
+
+// --- Lifecycle ----------------------------------------------
+void initLoadCell() {
+    Serial.printf("Load cell: pins DOUT=%d SCK=%d\n",
+                  LOADCELL_DOUT_PIN, LOADCELL_SCK_PIN);
+
+    loadCell.begin();
+    loadCellRestoreFactor();
+
+    Serial.printf("Load cell: stabilizing %lu ms... ",
+                  (unsigned long)LOADCELL_STABILIZING_MS);
+
+    int samples = loadCellSettle(LOADCELL_STABILIZING_MS, 3000UL);
+    Serial.printf("done (%d samples).\n", samples);
+
+    // If the HX711 never pulled DOUT low, try one power cycle. This recovers
+    // the case where SCK was left HIGH by the bootloader/previous firmware and
+    // the HX711 latched into power-down mode.
+    if (loadCellLastDataMs == 0) {
+        Serial.printf("WARNING: HX711 not responding (DOUT=%d, signal timeout=%s).\n",
+                      digitalRead(LOADCELL_DOUT_PIN),
+                      loadCell.getSignalTimeoutFlag() ? "yes" : "no");
+        Serial.println(F("  Power-cycling the HX711 and retrying..."));
+        loadCell.powerDown();
+        delay(20);
+        loadCell.powerUp();
+        delay(100);
+        samples = loadCellSettle(1500UL, 2000UL);
+        Serial.printf("  retry: %d samples.\n", samples);
+    }
 
     if (loadCellLastDataMs == 0) {
         loadCellKg = 0.0f;
         loadCellLastPrintMs = millis();
-        Serial.println(F("WARNING: HX711 not responding! Check wiring (DOUT=33, SCK=32)."));
-        Serial.println(F("Load cell: weight will read 0 until the HX711 replies."));
+        Serial.println(F("WARNING: HX711 still not responding! Check wiring:"));
+        Serial.println(F("  HX711 DT  -> GPIO33, SCK -> GPIO32, VCC -> 3V3, GND -> GND."));
+        Serial.println(F("  Load cell: weight will read 0 until the HX711 replies."));
         return;
     }
 
@@ -207,7 +238,7 @@ void initLoadCell() {
 
 // Call from loop() as often as possible — one HX711_ADC conversion per call.
 bool updateLoadCell() {
-    if (loadCell.update()) {
+    if (loadCellUpdateSafe()) {
         loadCellKg         = loadCell.getData();
         loadCellLastDataMs = millis();
         return true;
@@ -233,7 +264,9 @@ float readLoadCell() {
     return kg;
 }
 
-// Zero the scale (call with nothing on it)
+// Zero the scale (call with nothing on it). Uses the non-blocking tare API so
+// every read goes through loadCellUpdateSafe() rather than the library's
+// internal blocking loop.
 void tareLoadCell() {
     if (!loadCellReady()) {
         Serial.println(F("HX711 not ready - tare aborted."));
@@ -241,12 +274,19 @@ void tareLoadCell() {
     }
 
     Serial.print(F("Taring... "));
-    loadCell.tare();                    // blocking, ~1-3 s at 10 SPS
+    loadCell.tareNoDelay();
 
-    if (loadCell.getTareTimeoutFlag()) {
-        Serial.println(F("TIMEOUT!"));
-        Serial.println(F("  Check that the HX711 is connected and powered."));
-        return;
+    const uint32_t start   = millis();
+    const uint32_t timeout = (uint32_t)loadCell.getSettlingTime() + 3000UL;
+
+    while (!loadCell.getTareStatus()) {
+        loadCellUpdateSafe();
+        if ((millis() - start) > timeout) {
+            Serial.println(F("TIMEOUT!"));
+            Serial.println(F("  Check that the HX711 is connected and powered."));
+            return;
+        }
+        delay(1);
     }
 
     loadCellKg         = loadCell.getData();
@@ -262,7 +302,7 @@ static bool loadCellRefreshDataSet(uint32_t timeoutMs) {
     uint32_t start     = millis();
 
     while (remaining > 0) {
-        if (loadCell.update()) {
+        if (loadCellUpdateSafe()) {
             loadCellKg         = loadCell.getData();
             loadCellLastDataMs = millis();
             remaining--;

@@ -68,12 +68,14 @@ void setup() {
   pinMode(SSR3_PIN, OUTPUT); digitalWrite(SSR3_PIN, LOW);
   pinMode(SSR4_PIN, OUTPUT); digitalWrite(SSR4_PIN, LOW);
 
-  // Bring the wireless link up BEFORE the load cell's 2.4 s settling window,
-  // so the HMI's boot-time TARE (sent 3 s after HMI boot) is queued instead of
-  // being lost while setup() is still blocking. The receive callback only
-  // enqueues commands; they are executed later from loop().
-  initEspNow();     // wireless link to the HMI board
-
+  // Load cell FIRST, before Wi-Fi/ESP-NOW. HX711_ADC bit-bangs the 24-bit
+  // read, and the radio should not be running while the converter is being
+  // brought up. This also matches the proven standalone 200 kg sketch.
+  //
+  // The HMI only sends TARE once, at its own boot. Because ESP-NOW now comes
+  // up after the load cell, that early packet can be missed — setup() below
+  // tares automatically when no session was restored, so the scale is still
+  // zeroed. TARE from the HMI keeps working normally after boot.
   initLoadCell();   // HX711 weight sensor (DOUT=33, SCK=32)
   loadCellPrintHelp();
   initSHT31();      // temperature/humidity (I2C 21/22)
@@ -87,6 +89,8 @@ void setup() {
   if (getDryerState() == DSTATE_IDLE) {
     tareLoadCell();
   }
+
+  initEspNow();     // wireless link to the HMI board
 }
 
 void loop() {

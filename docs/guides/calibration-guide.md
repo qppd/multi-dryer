@@ -26,11 +26,14 @@ kilograms:
 - **Offset** is set by `TARE`. It is *also* captured with every drying session
   (with the initial weight), so a mid-drying reboot restores the exact zero
   reference — no re-tare, even after a power cycle.
-- **Boot behavior:** the controller auto-tares only when **no session** was
-  restored. If a session is active, the saved zero reference is kept (the HMI's
-  boot-time TARE is ignored). This also means a controller-only reboot — e.g.
-  after flashing, while the HMI stays on — still displays weight instead of
-  sitting at `0.0 kg` with an unset offset.
+- **Boot behavior:** the controller initializes the HX711 **before** Wi-Fi/
+  ESP-NOW, because HX711_ADC bit-bangs the read and the radio should not be
+  running during bring-up. It auto-tares only when **no session** was restored.
+  If a session is active, the saved zero reference is kept (the HMI's boot-time
+  TARE is ignored). This also means a controller-only reboot — e.g. after
+  flashing, while the HMI stays on — still displays weight instead of sitting
+  at `0.0 kg` with an unset offset. The HMI's one-shot boot TARE can arrive
+  before ESP-NOW is up; the automatic IDLE tare covers that case.
 
 > ⚠️ **TARE / CALIBRATE are only accepted while the state machine is IDLE.**
 > If a session is active (or was restored), the commands are ignored — this
@@ -125,7 +128,8 @@ prefs.end();
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `WARNING: HX711 not responding!` at boot | Wiring / power / insufficient settling time | Check DOUT=33, SCK=32, VCC=3V3/5V, GND; let it power-stabilize |
+| `WARNING: HX711 not responding!` at boot (the firmware retries once after a power cycle) | Wiring / power / HX711 latched in power-down | Check DOUT=33, SCK=32, VCC=3V3/5V, GND. If it only fails when ESP-NOW is active, set `SCK_DISABLE_INTERRUPTS 1` (and optionally `SCK_DELAY 1`) in the HX711_ADC `config.h`; this firmware also brackets each read with `noInterrupts()` |
+| `HX711 not ready - no reading` after boot | No conversions arriving | Check the boot log for the printed `DOUT=33 SCK=32` line and the retry result; re-seat the HX711 connectors |
 | Weight reads **negative** | Wrong factor sign, or clamped noise | Re-calibrate; `readLoadCell()` clamps negatives to 0 anyway |
 | Reading off by a consistent **%** | Stale factor (e.g. after platform change) | Re-run CALIBRATE with a known weight |
 | Reading off by a consistent **amount** | Offset drift (temperature, mechanical) | Re-TARE (IDLE only) |
