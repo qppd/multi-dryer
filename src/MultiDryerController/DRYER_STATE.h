@@ -13,6 +13,13 @@
 //
 // All weight reads flow through this module (1 Hz cache) so the ESP-NOW status
 // packet and the water-loss math always use the same value.
+//
+// Weight glitch guard: while a session is active the load is on the platform,
+// so a single reading that collapses from a real weight to ~0 kg is a sensor
+// glitch (HX711 timeout, negative-noise clamp, bad conversion) — not real
+// drying. Without this guard such a tick makes water loss jump to 100 %, hits
+// the target and auto-completes the cycle mid-dry (HMI shows "Complete").
+// The last good weight is kept instead and the glitch tick is ignored.
 
 #ifndef DRYER_STATE_H
 #define DRYER_STATE_H
@@ -23,6 +30,14 @@
 #include "PID_CONFIG.h"
 
 #define DRYER_TICK_MS  1000
+
+// ── Weight glitch guard ──────────────────────────────────────────────────────
+// A reading is rejected while a session is active if it is ~0 kg after a real
+// reading, or if it collapses below 20 % of the last good value in one tick.
+// Slow, genuine drying (a few % per hour) never trips this; only sudden drops
+// (e.g. reading → 0 → reading) do.
+#define WEIGHT_GLITCH_MIN_KG       0.05f   // below this = no usable reading
+#define WEIGHT_GLITCH_DROP_RATIO   0.20f   // < 20 % of last good = glitch
 
 // ── Session persistence (NVS) ────────────────────────────────────────────────
 // Lets a drying session survive a controller reboot / watchdog reset:
@@ -47,6 +62,7 @@ static uint8_t       _state           = DSTATE_IDLE;
 static float         _waterLossPct    = 0.0f;
 static float         _waterLossTarget = 0.0f;   // 0 = auto-complete disabled
 static float         _weightKg        = 0.0f;   // cached, refreshed at 1 Hz
+static bool          _weightGlitch    = false;  // current reading rejected as a glitch
 static float         _initialWeightKg = 0.0f;
 static unsigned long _runMs           = 0;      // drying time, pauses excluded
 static unsigned long _lastTickMs      = 0;
@@ -78,6 +94,7 @@ void initDrying() {
     _state = DSTATE_IDLE;
     _waterLossPct = 0.0f; _waterLossTarget = 0.0f;
     _weightKg = 0.0f; _initialWeightKg = 0.0f;
+    _weightGlitch = false;
     _runMs = 0; _runtimeSeconds = 0; _estimatedEDT = 0;
     _lastTickMs = millis();
     _lastSaveMs = millis();
@@ -93,8 +110,17 @@ void startDrying() {
     if (_state != DSTATE_IDLE) {
         Serial.println(F("[DRYER] starting fresh session (restart)"));
     }
-    _initialWeightKg = readLoadCell();
-    _weightKg        = _initialWeightKg;
+    // Capture the initial weight. If the very first read is a sensor timeout,
+    // fall back to the last good weight so a start during a glitch does not
+    // leave the session with a 0 kg reference (which would disable water loss).
+    float startingKg = readLoadCell();
+    if (!loadCellReady() && _weightKg >= WEIGHT_GLITCH_MIN_KG) {
+        startingKg = _weightKg;
+        Serial.println(F("[DRYER] initial read timed out — using last good weight"));
+    }
+    _initialWeightKg = startingKg;
+    _weightKg        = startingKg;
+    _weightGlitch    = false;
     _runMs = 0; _runtimeSeconds = 0; _estimatedEDT = 0; _waterLossPct = 0;
     _lastTickMs = millis();
     _lastSaveMs = millis();
@@ -112,6 +138,7 @@ void stopDrying() {
     _state = DSTATE_IDLE;
     _runMs = 0; _runtimeSeconds = 0; _estimatedEDT = 0;
     _waterLossPct = 0; _initialWeightKg = 0;
+    _weightGlitch = false;
     clearDryingSession();   // session over — nothing to resume later
     Serial.println(F("[DRYER] stopped"));
 }
@@ -132,6 +159,25 @@ void resumeDrying() {
     Serial.println(F("[DRYER] resumed (session saved)"));
 }
 
+// ── Weight glitch detection ──────────────────────────────────────────────────
+// True when `kg` must be ignored as a sensor glitch. `_weightKg` holds the last
+// accepted (good) reading, so the comparison is against it, not against 0.
+static bool weightReadingIsGlitch(float kg) {
+    // A ~0 kg reading is never believable once the session has a real load
+    // reference (last good weight, or the captured initial weight). This also
+    // covers a restore where the first read timed out: water loss stays frozen
+    // instead of jumping to 100 % before the HX711 answers again.
+    if (kg < WEIGHT_GLITCH_MIN_KG) {
+        return (_weightKg >= WEIGHT_GLITCH_MIN_KG) ||
+               (_initialWeightKg >= WEIGHT_GLITCH_MIN_KG);
+    }
+    // Sudden collapse from the last good reading. Compared against the last
+    // accepted value (not the initial one) so slow, genuine drying past the
+    // 80 % loss mark is still accepted.
+    return (_weightKg >= WEIGHT_GLITCH_MIN_KG) &&
+           (kg < _weightKg * WEIGHT_GLITCH_DROP_RATIO);
+}
+
 // ── 1 Hz tick (call every loop(); throttled internally) ──────────────────────
 void updateDrying() {
     unsigned long now = millis();
@@ -140,41 +186,63 @@ void updateDrying() {
     _lastTickMs = now;
 
     // Weight cache — refreshed at 1 Hz in every state so the HMI always sees
-    // live weight (single read source for status + water loss)
-    _weightKg = readLoadCell();
+    // live weight (single read source for status + water loss).
+    // An active session ignores sudden drops to ~0 kg: keeping the last good
+    // value stops a glitch from pegging water loss at 100 % and auto-completing
+    // the cycle (HMI "Drying Complete" mid-dry).
+    bool sessionActive = (_state == DSTATE_DRYING || _state == DSTATE_PAUSED);
+    float kg = readLoadCell();
+    bool glitch = sessionActive && weightReadingIsGlitch(kg);
+
+    if (glitch) {
+        if (!_weightGlitch) {
+            Serial.printf("[DRYER] weight glitch ignored (read %.3f kg, keeping %.3f kg)\n",
+                          kg, _weightKg);
+            _weightGlitch = true;
+        }
+    } else {
+        if (_weightGlitch) {
+            Serial.printf("[DRYER] weight reading recovered (%.3f kg)\n", kg);
+            _weightGlitch = false;
+        }
+        _weightKg = kg;
+    }
 
     if (_state != DSTATE_DRYING) return;
 
     _runMs += elapsed;
     _runtimeSeconds = _runMs / 1000UL;
 
-    // Water loss from the session's initial weight
-    if (_initialWeightKg > 0.01f) {
-        _waterLossPct = (_initialWeightKg - _weightKg) / _initialWeightKg * 100.0f;
-        if (_waterLossPct < 0.0f) _waterLossPct = 0.0f;
-        if (_waterLossPct > 100.0f) _waterLossPct = 100.0f;
-    } else {
-        _waterLossPct = 0.0f;
-    }
-
-    // Rate-based estimate: remaining % ÷ %/s
-    if (_waterLossTarget > 0.0f && _waterLossPct < _waterLossTarget && _runtimeSeconds > 0) {
-        float ratePctPerSec = _waterLossPct / (float)_runtimeSeconds;
-        if (ratePctPerSec > 0.0001f) {
-            _estimatedEDT = (uint32_t)((_waterLossTarget - _waterLossPct) / ratePctPerSec);
+    // Water loss / completion only with a trustworthy reading. A glitch tick
+    // freezes water loss at its last value and can never complete the cycle.
+    if (!glitch) {
+        if (_initialWeightKg > 0.01f) {
+            _waterLossPct = (_initialWeightKg - _weightKg) / _initialWeightKg * 100.0f;
+            if (_waterLossPct < 0.0f) _waterLossPct = 0.0f;
+            if (_waterLossPct > 100.0f) _waterLossPct = 100.0f;
         } else {
-            _estimatedEDT = 0;
+            _waterLossPct = 0.0f;
         }
-    }
 
-    // Auto-complete when the target water loss is reached
-    if (_waterLossTarget > 0.0f && _waterLossPct >= _waterLossTarget) {
-        Serial.printf("[DRYER] COMPLETE — water loss %.1f %% reached target %.1f %%\n",
-                      _waterLossPct, _waterLossTarget);
-        _estimatedEDT = 0;   // no longer meaningful once complete
-        stopPID();
-        _state = DSTATE_COMPLETE;
-        clearDryingSession();   // finished — nothing to resume later
+        // Rate-based estimate: remaining % ÷ %/s
+        if (_waterLossTarget > 0.0f && _waterLossPct < _waterLossTarget && _runtimeSeconds > 0) {
+            float ratePctPerSec = _waterLossPct / (float)_runtimeSeconds;
+            if (ratePctPerSec > 0.0001f) {
+                _estimatedEDT = (uint32_t)((_waterLossTarget - _waterLossPct) / ratePctPerSec);
+            } else {
+                _estimatedEDT = 0;
+            }
+        }
+
+        // Auto-complete when the target water loss is reached
+        if (_waterLossTarget > 0.0f && _waterLossPct >= _waterLossTarget) {
+            Serial.printf("[DRYER] COMPLETE — water loss %.1f %% reached target %.1f %%\n",
+                          _waterLossPct, _waterLossTarget);
+            _estimatedEDT = 0;   // no longer meaningful once complete
+            stopPID();
+            _state = DSTATE_COMPLETE;
+            clearDryingSession();   // finished — nothing to resume later
+        }
     }
 
     // Periodic save while drying, so a mid-session reboot loses at most
