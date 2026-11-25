@@ -75,6 +75,9 @@ The HMI sends the same commands over ESP-NOW (`CMD_TARE_SCALE` /
 2. Wait ~2 s for the reading to stabilize.
 3. Confirm the HMI shows roughly the known weight (it won't be exact yet — that's what Step 3 fixes).
 
+> The HMI calibration wizard defaults to **2.00 kg**; use `− / +` to match the
+> reference weight you actually place on the platform.
+
 ### Step 3 — Calibrate with the known mass
 1. Send **CALIBRATE** with the known mass in kg (e.g. `CALIBRATE:2` for a 2 kg weight).
 2. Expected serial:

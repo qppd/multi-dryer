@@ -155,7 +155,7 @@ Live status:
 
 ### 5.2 ⚙ CALIBRATE SCALE (guided 3-step wizard)
 1. **Step 1** — Empty the scale and tap **TARE SCALE** (controller must be IDLE).
-2. **Step 2** — Set the known reference weight with `− / +`.
+2. **Step 2** — Set the known reference weight with `− / +` (defaults to **2.00 kg**).
 3. **Step 3** — Place the weight, then tap **CALIBRATE**.
 
 → Full details: [`calibration-guide.md`](calibration-guide.md).

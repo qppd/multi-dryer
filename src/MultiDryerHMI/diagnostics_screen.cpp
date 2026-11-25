@@ -20,7 +20,7 @@ static lv_obj_t* uptimeLabel = NULL;
 static lv_obj_t* freeHeapLabel = NULL;
 
 // Calibration modal state
-static float     calibKg          = 0.50f;
+static float     calibKg          = 2.00f;   // default known reference weight (kg)
 static lv_obj_t* calibModalOverlay = NULL;
 static lv_obj_t* calibWeightLbl    = NULL;
 static lv_obj_t* calibStatusLbl    = NULL;
@@ -133,7 +133,7 @@ static void openCalibrationModal(void) {
     lv_obj_add_event_cb(decBtn, calDecCb, LV_EVENT_CLICKED, NULL);
 
     calibWeightLbl = lv_label_create(wRow);
-    lv_label_set_text(calibWeightLbl, "0.50 kg");
+    { char _b[16]; snprintf(_b, sizeof(_b), "%.2f kg", calibKg); lv_label_set_text(calibWeightLbl, _b); }
     lv_obj_set_style_text_font(calibWeightLbl, FONT_LARGE, 0);
     lv_obj_set_style_text_color(calibWeightLbl, COLOR_TEXT_PRIMARY, 0);
     lv_obj_set_flex_grow(calibWeightLbl, 1);
